@@ -157,8 +157,8 @@
         "fr": "Autoriser l'ouverture des volets"
       },
       "description": {
-        "en": "Off by default. On: Gladys may open the covers (extend the awnings listed below) and move them to a position (any position but fully closed may open). Garage doors and gates listed below close only with this option.",
-        "fr": "Désactivé par défaut. Activé : Gladys peut ouvrir les volets (dérouler les stores bannes listés ci-dessous) et les placer à une position (toute position sauf fermé peut ouvrir). Les portes de garage et portails listés ci-dessous ne se ferment qu'avec cette option."
+        "en": "Off by default. On: Gladys may open the covers (extend the awnings listed below) and move them to a position (any position but fully closed may open). Garage doors and gates listed below close only with this option, and those without a Movement data point stop only with it (a stop is a step, which moves a gate at rest).",
+        "fr": "Désactivé par défaut. Activé : Gladys peut ouvrir les volets (dérouler les stores bannes listés ci-dessous) et les placer à une position (toute position sauf fermé peut ouvrir). Les portes de garage et portails listés ci-dessous ne se ferment qu'avec cette option, et ceux sans point Movement ne s'arrêtent qu'avec elle (un arrêt est un pas, qui fait bouger un portail à l'arrêt)."
       },
       "required": false,
       "default": false
@@ -221,8 +221,8 @@
         "fr": "Portes de garage et portails"
       },
       "description": {
-        "en": "The ids of the shutter functions that drive a garage door or a gate, separated by commas. For them, closing needs the opening option too (someone may stand under them); a stop (a step) leaves only when Movement does not show the gate at rest, or with the opening option when the function has no Movement.",
-        "fr": "Les identifiants des fonctions de volet qui commandent une porte de garage ou un portail, séparés par des virgules. Pour elles, fermer exige aussi l'option d'ouverture (quelqu'un peut être dessous) ; un arrêt (un pas) ne part que si Movement ne montre pas le portail à l'arrêt, ou avec l'option d'ouverture quand la fonction n'a pas de Movement."
+        "en": "The ids of the shutter functions that drive a garage door or a gate, separated by commas. For them, closing needs the opening option too (someone may stand under them); a stop (a step) leaves only when Movement does not show the gate at rest, or, when the function has no Movement, only with the opening option (then like every stop: neither a 429 pause nor a read holds it back).",
+        "fr": "Les identifiants des fonctions de volet qui commandent une porte de garage ou un portail, séparés par des virgules. Pour elles, fermer exige aussi l'option d'ouverture (quelqu'un peut être dessous) ; un arrêt (un pas) ne part que si Movement ne montre pas le portail à l'arrêt, ou, quand la fonction n'a pas de Movement, seulement avec l'option d'ouverture (puis comme tout arrêt : ni une pause 429 ni une lecture ne le retiennent)."
       },
       "placeholder": {
         "en": "a090",

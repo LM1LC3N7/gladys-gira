@@ -338,11 +338,17 @@ export const T = {
       'Sent, without answer of the server: read back in the next 10 s, sent again only if a read shows it not applied.',
       'Envoyée, sans réponse du serveur : relue dans les 10 s, renvoyée seulement si une lecture la montre non appliquée.',
     ),
-    stopTrying: (s) =>
-      both(
-        `Stop not sent yet (server not reached): tried again for up to ${s} s after your click, then given up. Check the cover and click again if needed.`,
-        `Arrêt pas encore parti (serveur pas joint) : réessayé jusqu'à ${s} s après votre clic, puis abandonné. Vérifiez le volet et cliquez de nouveau si besoin.`,
-      ),
+    // `blind`: the function has Movement; without a read of it, the window is `blind` s.
+    stopTrying: (s, blind) =>
+      blind === undefined
+        ? both(
+            `Stop not sent yet (server not reached): tried again for up to ${s} s after your click, then given up. Check the cover and click again if needed.`,
+            `Arrêt pas encore parti (serveur pas joint) : réessayé jusqu'à ${s} s après votre clic, puis abandonné. Vérifiez le volet et cliquez de nouveau si besoin.`,
+          )
+        : both(
+            `Stop not sent yet (server not reached): tried again while Movement shows the cover moving, for up to ${s} s after your click (${blind} s when Movement cannot be read), then given up. Check the cover and click again if needed.`,
+            `Arrêt pas encore parti (serveur pas joint) : réessayé tant que Movement montre le volet en mouvement, jusqu'à ${s} s après votre clic (${blind} s quand Movement ne se lit pas), puis abandonné. Vérifiez le volet et cliquez de nouveau si besoin.`,
+          ),
     stopNotSent: (reason) =>
       both(
         `Stop not sent (${reason}): never sent later, click again.`,

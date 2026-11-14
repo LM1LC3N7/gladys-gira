@@ -83,7 +83,8 @@ certificate** twice, or type this fingerprint in the configuration.
 - **Allow switching on and dimming**: switch a light on, set a brightness;
 - **Allow opening covers**: open a cover, or move it to a position (any
   position but fully closed may open it); extend an awning; close a garage
-  door or a gate (see below);
+  door or a gate, and stop those without a "Movement" data point (see
+  below);
 - **Allow Gira scenes**: a scene of the server may switch on anything and
   open covers or doors.
 
@@ -91,9 +92,10 @@ The option is read again right before sending: turned off while a command
 waits, the command is refused.
 
 **Always leave**, whatever the options: turning off a light (a brightness of
-0 is a turning off), stopping a cover, closing a shutter (a position of 0 is
-a close). No option, no 429 pause, no project being read again, no read or
-command in flight holds them back. They cancel the commands of the same
+0 is a turning off), stopping a cover (but a gate without "Movement", see
+below), closing a shutter (a position of 0 is a close). No option, no 429
+pause, no project being read again, no read or command in flight holds them
+back. They cancel the commands of the same
 target still waiting, and the older protective command of the same target:
 a newer one always wins, and when the older one is already written, the
 newer one leaves once the server answered it.
@@ -119,6 +121,11 @@ of the functions (`GIRA_FUNCTION` in the Discovery):
   the function has a "Movement" data point, it is read first and the stop
   leaves only if the gate is not shown at rest (not read: in doubt, the stop
   leaves); without "Movement", stopping a gate needs the opening option too.
+  With the option, this stop goes like every stop: neither a 429 pause, nor a
+  project being read again, nor the start (before the first read of the
+  server), nor a read or a command in flight holds it back; the option is
+  read again before each try and right before sending (turned off meanwhile:
+  nothing sent).
 - **Functions not offered**: never offered nor commanded, not even a stop
   (a door opener, a pump...); a stop kept before the function was listed is
   dropped.
@@ -134,20 +141,26 @@ A stop does not leave only in these cases:
   registration that a refused token triggers at once);
 - before the configuration is first read from Gladys (container start): it
   is refused, nothing sent (the address is not known yet);
-- the function is in **Functions not offered**.
+- the function is in **Functions not offered**;
+- the stop of a gate without "Movement" while the opening option is off (at
+  the click, before a try or right before sending);
+- "Movement" read at 0: the function is already at rest, nothing to send (a
+  gate before its first try, a cover before a new try).
 
 What happens then depends on the stop:
 
 - **Stopping a cover** ("Step-Up-Down") is never sent again once something
   reached the server: on a cover at rest, each one is a short step (down,
   up for an awning). When nothing reached the server (refused, too slow,
-  locked), it is tried again about every second: for up to 10 seconds when
-  the function has "Movement", read before each new try (0: already stopped,
-  given up; 1: sent), otherwise for up to about 3 seconds. Then it is given
-  up. The answer says what happened: done, "Stop not sent yet... tried again
-  for up to N s, then given up", or "Stop not sent... click again". Sent
-  without an answer of the server, it is never sent again ("Sent, without
-  answer"). A stop waiting for a free connection waits 3 seconds at most.
+  locked), it is tried again about every second, up to about 3 seconds after
+  your click. When the function has "Movement", it is read before each new
+  try: 0, already stopped, given up; 1, sent, and only a read of 1 stretches
+  the tries to 10 seconds; not read (error, too slow), it is as without
+  "Movement": no try after about 3 seconds. Then it is given up. The answer
+  says what happened: done, "Stop not sent yet... up to N s..., then given
+  up", or "Stop not sent... click again". Sent without an answer of the
+  server, it is never sent again ("Sent, without answer"). A stop waiting for
+  a free connection waits 3 seconds at most.
 - **Closing a cover** ("Up-Down") is tried again while nothing reached the
   server (or the server refused it unexecuted: 423, 429, 401/403), at most
   **20 seconds** after your click, every 5 seconds; on a cover with a
@@ -174,9 +187,9 @@ reads). A stop on a data point the server no longer knows (404) is dropped.
 At most 8 protective requests are open at once (the others wait their turn).
 
 KNX conventions used: "Up-Down" 0 is up and 1 is down; a stop is
-"Step-Up-Down" 1, which stops a moving cover; the position of the server is
-in percent closed (an awning: percent extended), shown in Gladys in percent
-open (an awning: extended).
+"Step-Up-Down" 1 (0 for an awning), which stops a moving cover; the position
+of the server is in percent closed (an awning: percent extended), shown in
+Gladys in percent open (an awning: extended).
 
 ## Scenes
 

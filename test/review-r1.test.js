@@ -1,8 +1,9 @@
 // -----------------------------------------------------------------------------
-// The points of review r1: order of the protective commands of one target,
-// a stop never repeated, kept guards bounded in time, the token gone on a
-// stop, /data slow at start, awnings, gates and excluded functions, the lot
-// of protective connections, and one test per guard the mutants found bare.
+// The points of reviews r1 to r3: order of the protective commands of one
+// target, a stop never repeated, kept guards bounded in time, the token gone
+// on a stop, /data slow at start, awnings, gates and excluded functions, the
+// lot of protective connections, the tries of a stop by Movement, and one
+// test per guard the mutants found bare.
 // -----------------------------------------------------------------------------
 
 import { test } from 'node:test';
@@ -36,6 +37,41 @@ async function fireUntil(s, fid, key, value) {
 
 const puts = (s) =>
   s.gw.requests.filter((r) => r.method === 'PUT').map((r) => `${r.path.slice(8)}=${r.json?.value}`);
+
+const LOCKED = { status: 423, body: { error: { code: 'locked', message: 'locked' } } };
+
+/** A request that counts the ones open and lists every call (method and path). */
+function counting() {
+  const c = { open: 0, calls: [] };
+  c.request = async (o) => {
+    c.calls.push(`${o.method} ${o.path}`);
+    c.open += 1;
+    try {
+      return await pinnedRequest(o);
+    } finally {
+      c.open -= 1;
+    }
+  };
+  return c;
+}
+
+/**
+ * Moves the virtual clock by `ms`, in steps, each only once no request is
+ * open: the virtual time stands still while the network works, so the times
+ * of the tries are exact.
+ */
+async function quietly(s, c, ms, step = 100) {
+  const idle = () =>
+    waitFor(async () => {
+      await pause(3);
+      return c.open === 0;
+    }, 'the requests done');
+  for (let done = 0; done < ms; done += step) {
+    await idle();
+    await s.advance(step);
+  }
+  await idle();
+}
 
 // --- B1 -------------------------------------------------------------------------
 
@@ -708,4 +744,163 @@ test('I8: a switch-off kept for another address is neither sent nor lost', async
   assert.equal(s.gw.puts('a031').length, 0);
   await s.app.shutdown();
   assert.equal(s.store.data.guards.length, 1);
+});
+
+// --- Review r3 ---------------------------------------------------------------------
+
+test('I1 r3: Movement not read: a new try follows the 3 s window, never 10 s (s15)', async (t) => {
+  const c = counting();
+  const s = await setup(t, { request: c.request });
+  for (const [label, movement] of [
+    // s15: every read of Movement fails (503), the server locked 4.5 s.
+    ['reads failing', () => undefined],
+    // A read of 1 stretches only its own try: the next unread one is given up.
+    ['moving, then reads failing from 2.5 s', (at) => (at < 2500 ? '1' : undefined)],
+  ]) {
+    const t0 = s.clock.elapsed;
+    const tries = [];
+    s.gw.replyFor = (r) => {
+      const at = s.clock.elapsed - t0;
+      if (r.method === 'GET' && r.path === '/values/a040') {
+        const value = movement(at);
+        if (value === undefined) return { status: 503, body: {} };
+        s.gw.values.a043 = value;
+        return undefined;
+      }
+      if (r.method === 'PUT' && r.path === '/values/a041') {
+        tries.push(Math.round(at));
+        if (at < 4500) return LOCKED;
+      }
+      return undefined;
+    };
+    const ack = s.fire('a040', 'state', 0);
+    await quietly(s, c, 12_000);
+    const a = await ack;
+    assert.deepEqual(tries, [0, 1000, 2000], `${label}: the tries (s15: one taken after 4.5 s)`);
+    assert.match(ackError(a), /Stop not sent \(/, label);
+    assert.equal(s.app.guards.size, 0, label);
+  }
+  s.gw.replyFor = () => undefined;
+});
+
+test('I1 r3: a gate whose first read of Movement fails late: its first try still leaves (in doubt)', async (t) => {
+  const s = await setup(t, { config: { gate_functions: 'a040' } });
+  const read = (r) => r.method === 'GET' && r.path === '/values/a040';
+  // The read answers 503 once 3.2 s (virtual) went by: past the 3 s window of the new tries.
+  s.gw.latency = (r) => {
+    if (!read(r)) return 0;
+    s.clock.advance(3200);
+    return 30;
+  };
+  s.gw.replyFor = (r) => (read(r) ? { status: 503, body: {} } : undefined);
+  const ack = await s.fire('a040', 'state', 0);
+  assert.equal(ack.success, true, ackError(ack));
+  assert.deepEqual(puts(s), ['a041=1']);
+});
+
+test('m1 r3: a gate without Movement, opening option on: its stop takes the path of every stop', async (t) => {
+  const c = counting();
+  const s = await setup(t, {
+    config: { gate_functions: 'a050', allow_open: true },
+    request: c.request,
+  });
+  // Not held back by a 429 pause, a project being read again, full slots, a read in flight.
+  s.app.pauseEnd = s.clock.monotonic() + 3600_000;
+  s.app.stale = true;
+  s.app.slotsUsed = 99;
+  s.app.reading = true;
+  let ack = await s.fire('a050', 'state', 0);
+  assert.equal(ack.success, true, ackError(ack));
+  assert.deepEqual(puts(s), ['a051=1']);
+  s.app.pauseEnd = 0;
+  s.app.stale = false;
+  s.app.slotsUsed = 0;
+  s.app.reading = false;
+  // Locked: tried again like a stop without Movement (3 s), never refused at once.
+  const t0 = s.clock.elapsed;
+  const tries = [];
+  s.gw.replyFor = (r) => {
+    if (r.method !== 'PUT' || r.path !== '/values/a051') return undefined;
+    const at = s.clock.elapsed - t0;
+    tries.push(Math.round(at));
+    return at < 1500 ? LOCKED : undefined;
+  };
+  const pending = s.fire('a050', 'state', 0);
+  await quietly(s, c, 6000);
+  ack = await pending;
+  assert.equal(ack.success, true, ackError(ack));
+  assert.deepEqual(tries, [0, 1000, 2000]);
+  // The option turned off after a try: given up before the next connection.
+  s.gw.replyFor = (r) => {
+    if (r.method !== 'PUT' || r.path !== '/values/a051') return undefined;
+    s.app.config = { ...s.app.config, allowOpen: false };
+    return LOCKED;
+  };
+  const calls = () => c.calls.filter((x) => x === 'PUT /values/a051').length;
+  const before = calls();
+  const off = s.fire('a050', 'state', 0);
+  await quietly(s, c, 4000);
+  ack = await off;
+  assert.match(ackError(ack), /Opening covers is not allowed/);
+  assert.equal(calls() - before, 1, 'no connection for a try after the option was turned off');
+  assert.equal(s.app.guards.size, 0);
+});
+
+test('m1 r3: a gate stop without Movement: the option read again right before the first byte', async (t) => {
+  let s;
+  const request = slowRequest((o) => {
+    if (o.method === 'PUT') {
+      s.app.config = { ...s.app.config, allowOpen: false };
+      return 100;
+    }
+    return 0;
+  });
+  s = await setup(t, { config: { gate_functions: 'a050', allow_open: true }, request });
+  const ack = await s.fire('a050', 'state', 0);
+  assert.match(ackError(ack), /Opening covers is not allowed/);
+  assert.equal(s.gw.puts('a051').length, 0);
+  assert.equal(s.app.guards.size, 0);
+});
+
+test('m1 r3: a gate stop refused for the option cancels nothing (a scene in flight leaves)', async (t) => {
+  const request = slowRequest((o) =>
+    o.method === 'PUT' && String(o.path).endsWith('/a061') ? 300 : 0,
+  );
+  const s = await setup(t, {
+    config: { gate_functions: 'a050', allow_scenes: true },
+    request,
+  });
+  const scene = s.fireScene({ function: 'a060', scene: 3 });
+  await pause(50);
+  const stop = await s.fire('a050', 'state', 0);
+  assert.match(ackError(stop), /Opening covers is not allowed/);
+  const done = await scene;
+  assert.equal(done.success, true, ackError(done));
+  assert.deepEqual(puts(s), ['a061=3']);
+});
+
+test('m1 r3: before the first read, a gate stop without Movement leaves with the option', async (t) => {
+  const s = await setup(t, { config: { gate_functions: 'a050', allow_open: true } });
+  s.app.stop();
+  s.app.inventory = undefined;
+  s.app.memoryState = 'unloaded';
+  await within(s.app.start(s.raw), 'restart');
+  assert.equal(s.app.model.writers.size, 0);
+  const ack = await s.fire('a050', 'state', 0);
+  assert.equal(ack.success, true, ackError(ack));
+  assert.deepEqual(puts(s), ['a051=1']);
+});
+
+test('m3 r3: before the first read, an awning stop steps up (0), a shutter stop down (1)', async (t) => {
+  const s = await setup(t, { config: { awning_functions: 'a050' } });
+  s.app.stop();
+  s.app.inventory = undefined;
+  s.app.memoryState = 'unloaded';
+  await within(s.app.start(s.raw), 'restart');
+  assert.equal(s.app.model.writers.size, 0, 'no function known: the stops from the params');
+  let ack = await s.fire('a050', 'state', 0);
+  assert.equal(ack.success, true, ackError(ack));
+  ack = await s.fire('a040', 'state', 0);
+  assert.equal(ack.success, true, ackError(ack));
+  assert.deepEqual(puts(s), ['a051=0', 'a041=1']);
 });

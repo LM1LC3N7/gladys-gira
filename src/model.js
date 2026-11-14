@@ -338,17 +338,17 @@ export function buildModel(idsOf, functions, options = {}) {
             });
       // A stop is a step, which moves a cover at rest: towards closed for a
       // shutter, up (in) for an awning. A gate at rest would step: its stop
-      // leaves only when Movement shows it moving (read first); without
-      // Movement, it needs the opening option.
+      // leaves only when Movement does not show it at rest (read first);
+      // without Movement, it needs the opening option, then takes the path
+      // of every stop (protective).
       const stop = () =>
-        sense === 'gate' && !found.movement
-          ? op(step, 1, { protective: false, kind: 'move', need: 'open' })
-          : op(step, sense === 'awning' ? 0 : 1, {
-              protective: true,
-              kind: 'move',
-              movementDpid: found.movement?.uid,
-              gate: sense === 'gate',
-            });
+        op(step, sense === 'awning' ? 0 : 1, {
+          protective: true,
+          kind: 'move',
+          movementDpid: found.movement?.uid,
+          gate: sense === 'gate',
+          ...(sense === 'gate' && !found.movement ? { need: 'open' } : {}),
+        });
       add(
         'state',
         { category: C.SHUTTER, type: T.SHUTTER.STATE, min: -1, max: 1 },
@@ -489,11 +489,11 @@ export function stopFromDevice(device, feature, value, options = {}) {
     // The sense of today's configuration.
     const sense = coverSense(fid, options);
     if (key === 'state' && v === COVER_STATE.STOP) {
-      // A gate without Movement: its stop needs the option (refused here, before the first read).
-      if (sense === 'gate' && !movement) return undefined;
       return op(step, 'Step-Up-Down', sense === 'awning' ? 0 : 1, 'move', {
         movementDpid: movement,
         gate: sense === 'gate',
+        // A gate without Movement: its stop needs the opening option (checked by the stop path).
+        ...(sense === 'gate' && !movement ? { need: 'open' } : {}),
       });
     }
     // A gate never closes without the option.

@@ -362,8 +362,8 @@ export const MUTANTS = [
   [
     'r2 awning stop up',
     'src/model.js',
-    "          : op(step, sense === 'awning' ? 0 : 1, {",
-    '          : op(step, 1, {',
+    "        op(step, sense === 'awning' ? 0 : 1, {",
+    '        op(step, 1, {',
     [R],
   ],
   [
@@ -397,8 +397,8 @@ export const MUTANTS = [
   [
     'r2 gate without Movement',
     'src/model.js',
-    "        sense === 'gate' && !found.movement",
-    'false',
+    "          ...(sense === 'gate' && !found.movement ? { need: 'open' } : {}),",
+    '          ...{},',
     [R],
   ],
   [
@@ -411,8 +411,8 @@ export const MUTANTS = [
   [
     'r2 params gate stop',
     'src/model.js',
-    "      if (sense === 'gate' && !movement) return undefined;",
-    '',
+    "        ...(sense === 'gate' && !movement ? { need: 'open' } : {}),",
+    '        ...{},',
     [R],
   ],
   [
@@ -469,6 +469,77 @@ export const MUTANTS = [
     'src/app.js',
     '      }, TIMINGS.stopTimeout);\n      waiter.resolve',
     '      }, 1e9);\n      waiter.resolve',
+    [R],
+  ],
+  // Review r3.
+  [
+    'r3 blind try in 3 s',
+    'src/app.js',
+    '          const window = moving === 1 ? TIMINGS.stopWindowMovement : TIMINGS.stopWindow;',
+    '          const window = TIMINGS.stopWindowMovement;',
+    [R],
+  ],
+  [
+    'r3 window checked on a try',
+    'src/app.js',
+    '          if (attempt > 0 && this.mono() - guard.created > window) {',
+    '          if (false) {',
+    [R],
+  ],
+  [
+    'r3 first gate try leaves',
+    'src/app.js',
+    '          if (attempt > 0 && this.mono() - guard.created > window) {',
+    '          if (this.mono() - guard.created > window) {',
+    [R],
+  ],
+  [
+    'r3 gate stop option at the click',
+    'src/app.js',
+    "    if (op.need === 'open' && !this.config.allowOpen) throw this.refusal('openOff');\n",
+    '',
+    [R],
+  ],
+  [
+    'r3 gate stop option before a try',
+    'src/app.js',
+    "    if (guard.need === 'open' && !c.allowOpen) {",
+    '    if (false) {',
+    [R],
+  ],
+  [
+    'r3 gate stop option before the byte',
+    'src/app.js',
+    "              if (guard.need === 'open' && !this.config.allowOpen) {",
+    '              if (false) {',
+    [R],
+  ],
+  [
+    'r3 gate stop option off: given up',
+    'src/app.js',
+    "    if (kind === 'aborted' && err.message === 'openOff') {",
+    '    if (false) {',
+    [R],
+  ],
+  [
+    'r3 gate stop option off: said',
+    'src/app.js',
+    "    if (guard.state === 'openOff') throw this.refusal('openOff');\n",
+    '',
+    [R],
+  ],
+  [
+    'r3 reason kept once given up',
+    'src/app.js',
+    "        if (!this.guardSendable(guard)) {\n          if (!guard.givenUp) this.giveUp(guard, 'notSent', guard.reason ?? guard.state);\n          return;\n        }\n        if (guard.movementDpid",
+    "        if (!this.guardSendable(guard)) {\n          this.giveUp(guard, 'notSent', guard.reason ?? guard.state);\n          return;\n        }\n        if (guard.movementDpid",
+    [R],
+  ],
+  [
+    'r3 params awning stop Step 0',
+    'src/model.js',
+    "      return op(step, 'Step-Up-Down', sense === 'awning' ? 0 : 1, 'move', {",
+    "      return op(step, 'Step-Up-Down', 1, 'move', {",
     [R],
   ],
 ];

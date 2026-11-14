@@ -58,21 +58,27 @@ Handoff document: what is done, what was decided, what comes next.
   default: on and brightness (`allow_control`), open and any position but
   closed (`allow_open`), scenes (`allow_scenes`). Brightness 0 = OnOff 0;
   position 0 = Up-Down 1. Stop = Step-Up-Down 1 (KNX: stops a moving cover; on
-  one at rest, a step down). Confirmed by a read for OnOff, Brightness (within
-  1. and Position (within 2); Up-Down is write only: done once taken, read
-     again after 5 and 20 s.
+  one at rest, a step down; 0 on an awning, a step up). Confirmed by a read
+  for OnOff, Brightness (within one point) and Position (within two); Up-Down
+  is write only: done once taken, read again after 5 and 20 s.
 - Covers (review r1): no way in the API to tell an awning or a gate from a
   shutter; three configuration lists by function id: not offered (nothing,
-  not even a stop), awnings (close = up, protective; open = extend, option),
-  gates (close needs `allow_open`, stop protective).
+  not even a stop), awnings (close = up, protective; open = extend, option;
+  stop = Step-Up-Down 0), gates (close needs `allow_open`; stop protective,
+  Movement read first; without Movement, the stop needs `allow_open`, checked
+  at the click, before each try and in `beforeSend`, and then takes the path
+  of every stop: no 429 pause, stale project, first read nor 3.5 s deadline
+  holds it back).
 - Guards (review r1, B1/B2/I1/I2): one per target, the newest wins, one
   protective request in flight per target; a stop sent once (review r2:
-  never reached, retried every ~1 s, 10 s with Movement read first, 0 = given
-  up, else 3 s; awning stop = Step-Up-Down 0; gate stop only when Movement
-  does not show it at rest, without Movement it needs `allow_open`); a close retried while not
-  reached, 20 s at most; a switch-off kept while not reached (dated in /data,
-  10 min at most), confirmed in a 10 s window after its answer (reads 0, 2,
-  5 s, none in a 429 pause), then dropped. A 401/invalidToken on a stop:
+  never reached, retried every ~1 s within 3 s; with Movement read before each
+  new try, 0 = given up, 1 = sent and only a read of 1 stretches the tries to
+  10 s, not read = the 3 s window (review r3); awning stop = Step-Up-Down 0;
+  gate stop only when Movement does not show it at rest, its first try sent
+  when the read fails, without Movement it needs `allow_open`); a close
+  retried while not reached, 20 s at most; a switch-off kept while not
+  reached (dated in /data, 10 min at most), confirmed in a 10 s window after
+  its answer (reads 0, 2, 5 s, none in a 429 pause), then dropped. A 401/invalidToken on a stop:
   one registration at once (the stop's own, never waiting for the reads').
   At most 8 protective connections at once.
 - /data slow or unreadable at start: read again every 10 s (one read at a
@@ -83,6 +89,7 @@ Handoff document: what is done, what was decided, what comes next.
   request) and the number, sent as is (0 to 64), to `Execute` (scene set) or
   `Scene` (scene extension).
 - 423 Locked: a read fails and comes back with the backoff; a command is
-  refused ("locked"); a stop is not counted and sent again every 5 s.
+  refused ("locked"); a stop is not counted and tried again (a switch-off
+  every 5 s, a cover stop every ~1 s within its window, a close every 5 s).
 - Mutants: `scripts/mutants.mjs` (list and runner, one at a time, own temp
   directory, process group killed at the deadline).

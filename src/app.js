@@ -1284,8 +1284,9 @@ export class GiraApp {
   //
   // - A stop (Step-Up-Down) is not idempotent (on a cover at rest, a step):
   //   never sent again once something reached the server. Never reached: tried
-  //   again every ~1 s (runStop), 10 s with Movement read first, else 3 s; then
-  //   given up, said in the ack.
+  //   again every ~1 s (runStop) within 3 s; with Movement read first, 0 gives
+  //   it up and only a read of 1 stretches the tries to 10 s; then given up,
+  //   said in the ack. A gate stop without Movement needs the opening option.
   // - A close (Up-Down 1) is sent again only while nothing reached the server
   //   (or it was refused unexecuted: 423, 429, 401/403), at most 20 s after the
   //   click; with a position, only after a read of it. Sent without an answer,
@@ -1362,6 +1363,7 @@ export class GiraApp {
       step: op.key === 'Step-Up-Down',
       movementDpid: op.movementDpid,
       gate: Boolean(op.gate),
+      need: op.need,
       created: this.mono(),
       at: this.now(),
       sends: 0,
@@ -1396,13 +1398,18 @@ export class GiraApp {
 
   /**
    * A protective command: never held back by anything but a missing or
-   * refused account or pin (then kept, and sent as soon as they are there).
+   * refused account or pin (then kept, and sent as soon as they are there),
+   * and, for the stop of a gate without Movement, the opening option.
    * The answer to Gladys waits for the first try at most 3.5 s; a kept
    * switch-off or close goes on after it.
    */
   async protect(op) {
     const address = this.config.address;
     if (!address) throw this.refusal('notConfigured');
+    // The stop of a gate without Movement (a step, which moves a gate at
+    // rest): only with the opening option, then the path of every stop (read
+    // again before each try and right before the first byte).
+    if (op.need === 'open' && !this.config.allowOpen) throw this.refusal('openOff');
     this.epochs.set(op.target, (this.epochs.get(op.target) ?? 0) + 1);
     this.stopCount += 1;
     const key = this.guardKey(address, op.fid);
@@ -1437,9 +1444,14 @@ export class GiraApp {
     }
     if (guard.state === 'alreadyStopped') return undefined;
     if (guard.state === 'excluded') throw this.refusal('excluded');
+    if (guard.state === 'openOff') throw this.refusal('openOff');
     if (guard.step && guard.inFlight) {
       // Still trying (nothing reached the server yet): said as it is.
-      throw this.refusal('stopTrying', Math.round(this.stopWindow(guard) / 1000));
+      throw this.refusal(
+        'stopTrying',
+        Math.round(this.stopWindow(guard) / 1000),
+        guard.movementDpid ? Math.round(TIMINGS.stopWindow / 1000) : undefined,
+      );
     }
     if (guard.givenUp && guard.state === 'notSent') {
       throw this.refusal('stopNotSent', guard.reason ?? 'error');
@@ -1463,6 +1475,11 @@ export class GiraApp {
     if (c.excluded.has(guard.fid)) {
       // Excluded since it was kept: never sent.
       this.giveUp(guard, 'excluded');
+      return false;
+    }
+    if (guard.need === 'open' && !c.allowOpen) {
+      // A gate stop without Movement, the opening option turned off since the click.
+      this.giveUp(guard, 'openOff');
       return false;
     }
     if (this.blocked) {
@@ -1508,7 +1525,7 @@ export class GiraApp {
     return guard.inFlight;
   }
 
-  /** How long a stop that never left is tried: 10 s when Movement tells, else 3 s. */
+  /** How long a stop that never left may be tried: 10 s when Movement may tell (a read of 1), else 3 s. */
   stopWindow(guard) {
     return guard.movementDpid ? TIMINGS.stopWindowMovement : TIMINGS.stopWindow;
   }
@@ -1533,15 +1550,18 @@ export class GiraApp {
   /**
    * A cover stop (Step-Up-Down: on a cover at rest, a step): never sent again
    * once something reached the server. Nothing reached it: tried again every
-   * ~1 s, within 10 s when Movement is read before each try (0: already
-   * stopped, given up; 1: sent), else within 3 s; then given up. A gate is
-   * stopped only when Movement does not show it at rest.
+   * ~1 s within 3 s of the click; when the function has Movement, it is read
+   * before each new try (0: already stopped, given up; 1: sent, and only a
+   * read of 1 stretches the tries to 10 s; not read: the 3 s window, as
+   * without Movement); then given up. A gate is stopped only when Movement
+   * does not show it at rest (its first try leaves when the read fails: in
+   * doubt, the stop leaves).
    */
   runStop(guard) {
     guard.inFlight = (async () => {
       for (let attempt = 0; ; attempt += 1) {
         if (!this.guardSendable(guard)) {
-          this.giveUp(guard, 'notSent', guard.reason ?? guard.state);
+          if (!guard.givenUp) this.giveUp(guard, 'notSent', guard.reason ?? guard.state);
           return;
         }
         if (guard.movementDpid && (attempt > 0 || guard.gate)) {
@@ -1550,10 +1570,17 @@ export class GiraApp {
             this.giveUp(guard, 'alreadyStopped');
             return;
           }
-          // Not read (undefined): in doubt, the stop leaves.
+          // A new try: 10 s only on a read showing the cover moving; not read
+          // (undefined), nothing blind after 3 s (a step on a cover that may
+          // have reached its end, or a closing step of a gate).
+          const window = moving === 1 ? TIMINGS.stopWindowMovement : TIMINGS.stopWindow;
+          if (attempt > 0 && this.mono() - guard.created > window) {
+            this.giveUp(guard, 'notSent', guard.reason);
+            return;
+          }
         }
         if (!this.guardSendable(guard)) {
-          this.giveUp(guard, 'notSent', guard.reason ?? guard.state);
+          if (!guard.givenUp) this.giveUp(guard, 'notSent', guard.reason ?? guard.state);
           return;
         }
         const outcome = await this.sendGuardOnce(guard);
@@ -1664,6 +1691,10 @@ export class GiraApp {
               if (guard.replaced || this.guards.get(key) !== guard) {
                 throw new GiraError('aborted', 'replaced');
               }
+              // A gate stop without Movement: the opening option once more.
+              if (guard.need === 'open' && !this.config.allowOpen) {
+                throw new GiraError('aborted', 'openOff');
+              }
               const mark = ++this.counter;
               guard.sentMark = mark;
               this.lastSent.set(guard.fid, mark);
@@ -1743,6 +1774,11 @@ export class GiraApp {
   guardFailed(guard, err) {
     const kind = err?.kind;
     if (kind === 'aborted' && (guard.replaced || err.message === 'replaced')) return 'gone';
+    if (kind === 'aborted' && err.message === 'openOff') {
+      // The opening option turned off right before the first byte: nothing sent.
+      this.giveUp(guard, 'openOff');
+      return 'gone';
+    }
     guard.reason = err?.message;
     if (kind === 'credentials') {
       guard.state = 'refusedCredentials';

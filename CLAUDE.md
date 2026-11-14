@@ -47,17 +47,20 @@ scripts/mutants.mjs               mutants of the guards (list and runner)
   opening covers and any position but closed (`allow_open`), scenes
   (`allow_scenes`). Never a `switch` feature.
 - **Stops are never held back**: turn off (brightness 0 included), cover stop
-  (Step-Up-Down 1) and close (Up-Down 1, position 0 included; an awning
-  closes up, a gate never closes without `allow_open`). Not by an option, a
-  429 pause, a project being read again, a read or a command in flight, full
-  slots, nor a slow /data. One guard per target, the newest wins (a replaced
+  (Step-Up-Down 1, 0 on an awning; a gate without Movement only with
+  `allow_open`, then on this same path) and close (Up-Down 1, position 0
+  included; an awning closes up, a gate never closes without `allow_open`).
+  Not by an option, a 429 pause, a project being read again, a read or a
+  command in flight, full slots, nor a slow /data. One guard per target, the newest wins (a replaced
   guard never writes a byte); a protective request waits for the one of its
   target already written.
 - **Bounded**: a stop (Step-Up-Down, not idempotent; 0 on an awning) is never
   repeated once something reached the server; never reached, it is tried
-  again every ~1 s for 10 s with Movement read first (0: given up), else 3 s;
-  a gate stop leaves only when Movement does not show it at rest (without
-  Movement: `allow_open`); a close is
+  again every ~1 s within 3 s; with Movement read before each new try, 0
+  gives it up and only a read of 1 stretches the tries to 10 s (not read: the
+  3 s window); a gate stop leaves only when Movement does not show it at rest
+  (its first try leaves when the read fails; without Movement: `allow_open`,
+  read again before each try and in `beforeSend`); a close is
   retried while nothing reached the server, at most 20 s; a switch-off never
   sent is kept (dated in /data) at most 10 min; once answered, it is confirmed
   in a 10 s window only (reads at 0, 2, 5 s, never in a 429 pause), then

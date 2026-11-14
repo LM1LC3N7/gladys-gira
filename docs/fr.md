@@ -90,7 +90,8 @@ reste :
   luminosité ;
 - **Autoriser l'ouverture des volets** : ouvrir un volet, ou le placer à une
   position (toute position sauf fermé peut l'ouvrir) ; dérouler un store
-  banne ; fermer une porte de garage ou un portail (voir plus bas) ;
+  banne ; fermer une porte de garage ou un portail, et arrêter ceux qui n'ont
+  pas de point « Movement » (voir plus bas) ;
 - **Autoriser les scènes Gira** : une scène du serveur peut tout allumer et
   ouvrir des volets ou des portes.
 
@@ -98,13 +99,14 @@ L'option est relue juste avant l'envoi : désactivée pendant qu'une commande
 attend, la commande est refusée.
 
 **Partent toujours**, quelles que soient les options : éteindre une lumière
-(une luminosité de 0 est une extinction), arrêter un volet, fermer un volet
-roulant (une position de 0 est une fermeture). Aucune option, aucune pause
-429, aucun projet en cours de relecture, aucune lecture ni commande en cours
-ne les retient. Ils annulent les commandes de la même cible encore en
-attente, et la commande protectrice plus ancienne de la même cible : la plus
-récente gagne toujours, et quand l'ancienne est déjà écrite, la nouvelle part
-une fois que le serveur y a répondu.
+(une luminosité de 0 est une extinction), arrêter un volet (sauf un portail
+sans « Movement », voir plus bas), fermer un volet roulant (une position de 0
+est une fermeture). Aucune option, aucune pause 429, aucun projet en cours
+de relecture, aucune lecture ni commande en cours ne les retient. Ils
+annulent les commandes de la même cible encore en attente, et la commande
+protectrice plus ancienne de la même cible : la plus récente gagne toujours,
+et quand l'ancienne est déjà écrite, la nouvelle part une fois que le
+serveur y a répondu.
 
 Attention : les fonctions « Switch » (lumières commutées) peuvent aussi
 alimenter une prise ou une pompe : un « tout éteindre » de Gladys ou d'un
@@ -129,7 +131,11 @@ Découverte) :
   portail à l'arrêt : quand la fonction a un point « Movement », il est lu
   d'abord et l'arrêt ne part que si le portail n'est pas montré à l'arrêt (pas
   lu : dans le doute, l'arrêt part) ; sans « Movement », arrêter un portail
-  exige aussi l'option d'ouverture.
+  exige aussi l'option d'ouverture. Avec l'option, cet arrêt passe comme tous
+  les arrêts : ni une pause 429, ni un projet en cours de relecture, ni le
+  démarrage (avant la première lecture du serveur), ni une lecture ou une
+  commande en cours ne le retiennent ; l'option est relue avant chaque essai
+  et juste avant l'envoi (désactivée entre-temps : rien envoyé).
 - **Fonctions à ne pas proposer** : jamais proposées ni commandées, pas même
   un arrêt (une gâche, une pompe...) ; un arrêt gardé avant l'ajout de la
   fonction à la liste est abandonné.
@@ -145,7 +151,11 @@ Un arrêt ne part pas seulement dans ces cas :
   après la réinscription unique qu'un jeton refusé déclenche tout de suite) ;
 - avant la première lecture de la configuration dans Gladys (démarrage du
   conteneur) : il est refusé, rien envoyé (l'adresse n'est pas encore connue) ;
-- la fonction est dans **Fonctions à ne pas proposer**.
+- la fonction est dans **Fonctions à ne pas proposer** ;
+- l'arrêt d'un portail sans « Movement » quand l'option d'ouverture est
+  désactivée (au clic, avant un essai ou juste avant l'envoi) ;
+- « Movement » lu à 0 : la fonction est déjà arrêtée, rien à envoyer (un
+  portail avant son premier essai, un volet avant un nouvel essai).
 
 La suite dépend de l'arrêt :
 
@@ -153,13 +163,16 @@ La suite dépend de l'arrêt :
   quelque chose a atteint le serveur : sur un volet à l'arrêt, chaque envoi est
   un petit pas (vers le bas, vers le haut pour un store banne). Quand rien n'a
   atteint le serveur (refus, trop lent, verrouillé), il est réessayé environ
-  toutes les secondes : jusqu'à 10 secondes quand la fonction a « Movement »,
-  lu avant chaque nouvel essai (0 : déjà arrêté, abandonné ; 1 : envoyé),
-  sinon jusqu'à 3 secondes environ. Ensuite il est abandonné. La réponse dit ce
-  qui s'est passé : fait, « Arrêt pas encore parti... réessayé jusqu'à N s,
-  puis abandonné », ou « Arrêt pas envoyé... cliquez de nouveau ». Envoyé sans
-  réponse du serveur, il n'est jamais renvoyé (« Envoyé, sans réponse »). Un
-  arrêt qui attend une connexion libre attend 3 secondes au plus.
+  toutes les secondes, jusqu'à 3 secondes environ après votre clic. Quand la
+  fonction a « Movement », il est lu avant chaque nouvel essai : 0, déjà
+  arrêté, abandonné ; 1, envoyé, et seule une lecture à 1 prolonge les essais
+  jusqu'à 10 secondes ; pas lu (erreur, trop lent), c'est comme sans
+  « Movement » : aucun essai après 3 secondes environ. Ensuite il est
+  abandonné. La réponse dit ce qui s'est passé : fait, « Arrêt pas encore
+  parti... jusqu'à N s..., puis abandonné », ou « Arrêt pas envoyé... cliquez
+  de nouveau ». Envoyé sans réponse du serveur, il n'est jamais renvoyé
+  (« Envoyé, sans réponse »). Un arrêt qui attend une connexion libre attend
+  3 secondes au plus.
 - **Fermer un volet** (« Up-Down ») est réessayé tant que rien n'a atteint le
   serveur (ou que le serveur l'a refusé sans l'exécuter : 423, 429, 401/403),
   au plus **20 secondes** après votre clic, toutes les 5 secondes ; sur un
@@ -189,9 +202,10 @@ plus (404) est abandonné. 8 requêtes protectrices au plus sont ouvertes à la
 fois (les autres attendent leur tour).
 
 Conventions KNX utilisées : « Up-Down » 0 monte et 1 descend ; un arrêt est
-« Step-Up-Down » 1, qui arrête un volet en mouvement ; la position du serveur
-est en pourcentage fermé (un store banne : pourcentage déroulé), affichée dans
-Gladys en pourcentage ouvert (un store banne : déroulé).
+« Step-Up-Down » 1 (0 pour un store banne), qui arrête un volet en
+mouvement ; la position du serveur est en pourcentage fermé (un store banne :
+pourcentage déroulé), affichée dans Gladys en pourcentage ouvert (un store
+banne : déroulé).
 
 ## Scènes
 
