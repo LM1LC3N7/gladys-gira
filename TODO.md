@@ -93,3 +93,5 @@ Handoff document: what is done, what was decided, what comes next.
   every 5 s, a cover stop every ~1 s within its window, a close every 5 s).
 - Mutants: `scripts/mutants.mjs` (list and runner, one at a time, own temp
   directory, process group killed at the deadline).
+
+- r4 minor (open): the stop window decides when a try starts, not when its first byte leaves; with a slow server and a failed Movement read the step can leave a few seconds after the window. Re-check the window in beforeSend to make it strict.
