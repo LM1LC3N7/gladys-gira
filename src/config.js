@@ -1,45 +1,152 @@
 // -----------------------------------------------------------------------------
-// Integration configuration.
-//
-// The configuration is filled in by the user in Gladys, from the `config_schema`
-// declared in `gladys-assistant-integration.json`. The SDK fetches it for you
-// (`gladys.getConfig()`) and notifies you of every change through
-// `gladys.onConfigUpdated()`.
-//
-// This module only provides defaults and normalizes the received object, so the
-// rest of the code never has to deal with `undefined`.
+// The configuration of the manifest `config_schema`, normalized. Nothing here
+// talks to the network.
 // -----------------------------------------------------------------------------
 
-// Defaults: they MUST stay consistent with the `default` values declared in the
-// `config_schema` of the manifest.
+import { DEFAULT_PORT, LANGUAGES, POLL_INTERVAL } from './constants.js';
+
+/** Defaults, mirrored by the manifest (checked by test/manifest.test.js). */
 export const DEFAULT_CONFIG = {
-  latitude: 48.8566, // Paris
-  longitude: 2.3522,
-  unit: 'celsius', // 'celsius' | 'fahrenheit'
-  // Seconds between two reads of the polled sensors. Gladys polls at most once
-  // a minute: slower intervals are applied by skipping polls (see
-  // createPoller in src/devices/index.js).
-  poll_frequency: 300,
-  // Reserved key (NOT in config_schema): because the manifest declares both
-  // 'local' and 'cloud' in its `transports` field, Gladys shows a standard
-  // "Prefer the local connection" toggle and sends the user's choice here.
-  // Read-only for the integration; defaults to true.
-  GLADYS_PREFER_LOCAL: true,
+  server_address: '',
+  username: '',
+  certificate_fingerprint: '',
+  poll_interval: POLL_INTERVAL.default,
+  allow_control: false,
+  allow_open: false,
+  allow_scenes: false,
+  language: 'fr',
+};
+
+/** A UID of the API (PDF 2.1): four small letters and digits, a letter first (some room kept). */
+export const UID = /^[a-z][a-z0-9]{2,11}$/;
+/** A client access token (PDF 4.2): 32 letters and digits. */
+export const TOKEN = /^[0-9A-Za-z]{32}$/;
+
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+const HOSTNAME =
+  /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f]/;
+
+/**
+ * The server address from what the user typed: "192.168.1.30",
+ * "192.168.1.30:8443", "https://192.168.1.30/" or ".../api/v2".
+ * @returns {{ host: string, port: number, key: string } | { error: string }}
+ */
+export function parseAddress(raw) {
+  const text = String(raw ?? '').trim();
+  if (text === '') return { error: 'empty' };
+  if (CONTROL.test(text) || /\s/.test(text)) return { error: 'invalid' };
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`;
+  let url;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return { error: 'invalid' };
+  }
+  if (url.protocol !== 'https:') return { error: 'scheme' };
+  if (url.username || url.password) return { error: 'credentials' };
+  if (!/^\/((api(\/v2)?)\/?)?$/i.test(url.pathname) || url.search || url.hash) {
+    return { error: 'path' };
+  }
+  let host = url.hostname.toLowerCase();
+  if (host.startsWith('[')) {
+    host = host.slice(1, -1);
+    if (/^ff/i.test(host) || host === '::') return { error: 'broadcast' };
+  } else if (IPV4.test(host)) {
+    const parts = host.split('.').map(Number);
+    if (parts.some((p) => p > 255)) return { error: 'invalid' };
+    if (parts[0] === 0 || (parts[0] >= 224 && parts[0] <= 239) || parts.every((p) => p === 255)) {
+      return { error: 'broadcast' };
+    }
+  } else if (!HOSTNAME.test(host)) {
+    return { error: 'invalid' };
+  } else if (/\.local$/.test(host)) {
+    // mDNS names do not resolve inside the container (bridge network).
+    return { error: 'local-name' };
+  }
+  const port = url.port ? Number(url.port) : DEFAULT_PORT;
+  if (!(port >= 1 && port <= 65535)) return { error: 'invalid' };
+  const shown = host.includes(':') ? `[${host}]` : host;
+  return { host, port, key: `${shown}:${port}` };
+}
+
+/**
+ * A SHA-256 certificate fingerprint as Node shows it (`AB:CD:...`, 32 bytes),
+ * from hex with or without colons; '' is none.
+ * @returns {{ fingerprint?: string, error?: 'fingerprint' }}
+ */
+export function parseFingerprint(raw) {
+  const text = String(raw ?? '')
+    .trim()
+    .replace(/^sha-?256[:=\s]*/i, '');
+  if (text === '') return {};
+  const hex = text.replace(/[:\s]/g, '');
+  if (!/^[0-9a-f]{64}$/i.test(hex)) return { error: 'fingerprint' };
+  return { fingerprint: hex.toUpperCase().match(/../g).join(':') };
+}
+
+/** Only true (or "true") turns an option on: anything else keeps it off. */
+const on = (raw) => raw === true || raw === 'true';
+
+const bounded = (raw, { min, max, default: fallback }) => {
+  if (raw === '' || raw === null || raw === undefined || typeof raw === 'boolean') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(Math.max(min, Math.min(max, n))) : fallback;
 };
 
 /**
- * Merge the user config with the defaults.
- * @param {Record<string, unknown>} raw config returned by the SDK
+ * The user name and password of the Gira server user. Basic authentication
+ * (RFC 7617): no ":" in the user name, no control character in either.
+ */
+function credentialsOf(c) {
+  const username = typeof c.username === 'string' ? c.username.trim() : '';
+  const password = typeof c.password === 'string' ? c.password : '';
+  if (username === '' && password === '') return { error: 'no-credentials' };
+  if (username === '') return { error: 'no-username' };
+  if (password === '') return { error: 'no-password' };
+  if (username.includes(':') || CONTROL.test(username) || username.length > 64) {
+    return { error: 'bad-username' };
+  }
+  if (CONTROL.test(password) || password.length > 128) return { error: 'bad-password' };
+  return { username, password };
+}
+
+/**
+ * @returns {{ host?: string, port?: number, address?: string, username: string,
+ *   password: string, fingerprint?: string, error?: string, pollInterval: number,
+ *   allowControl: boolean, allowOpen: boolean, allowScenes: boolean, language: 'fr'|'en' }}
  */
 export function normalizeConfig(raw = {}) {
+  const c = raw && typeof raw === 'object' ? raw : {};
+  const target = parseAddress(c.server_address);
+  const pin = parseFingerprint(c.certificate_fingerprint);
+  const creds = credentialsOf(c);
+  const error = target.error ?? pin.error ?? creds.error;
   return {
-    ...DEFAULT_CONFIG,
-    ...raw,
-    // Force the types: config may arrive as strings from a form.
-    latitude: Number(raw.latitude ?? DEFAULT_CONFIG.latitude),
-    longitude: Number(raw.longitude ?? DEFAULT_CONFIG.longitude),
-    poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
-    // The preference is a boolean; anything but an explicit false means true.
-    GLADYS_PREFER_LOCAL: raw.GLADYS_PREFER_LOCAL !== false,
+    host: target.host,
+    port: target.port,
+    address: target.key,
+    username: creds.error ? '' : creds.username,
+    password: creds.error ? '' : creds.password,
+    fingerprint: pin.fingerprint,
+    error,
+    pollInterval: bounded(c.poll_interval, POLL_INTERVAL),
+    allowControl: on(c.allow_control),
+    allowOpen: on(c.allow_open),
+    allowScenes: on(c.allow_scenes),
+    language: LANGUAGES.includes(c.language) ? c.language : DEFAULT_CONFIG.language,
   };
 }
+
+/** Two configurations that run the same way (a reconnection to Gladys keeps everything). */
+export const sameConfig = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** The parts of the configuration that make another session (address, account, pin). */
+export const sameSession = (a, b) =>
+  a.address === b.address &&
+  a.username === b.username &&
+  a.password === b.password &&
+  a.fingerprint === b.fingerprint &&
+  !a.error &&
+  !b.error;
