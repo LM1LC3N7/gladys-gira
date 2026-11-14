@@ -51,6 +51,7 @@ export async function setup(
     connect = true,
     create = true,
     getConfig,
+    request,
   } = {},
 ) {
   const gw = await fakeGira(server);
@@ -84,6 +85,7 @@ export async function setup(
     now: clock.now,
     mono: clock.monotonic,
     timers: clock.timers,
+    ...(request ? { request } : {}),
   });
   registerHandlers(gladys, app, logger);
   // The shutdown waits for /data at most 2 s (virtual): moved on by hand.

@@ -15,7 +15,8 @@ const A = 'test/app.test.js';
 const GU = 'test/guards.test.js';
 const M = 'test/model.test.js';
 const G = 'test/gira.test.js';
-const ALL = [C, A, GU, M, G];
+const R = 'test/review-r1.test.js';
+const ALL = [C, A, GU, M, G, R];
 
 /** [name, file, from (found exactly once), to, test files]. */
 export const MUTANTS = [
@@ -54,8 +55,8 @@ export const MUTANTS = [
   [
     '4 answered sends',
     'src/app.js',
-    'if (guard.answered < LIMITS.stopSends) {',
-    'if (guard.answered < 99) {',
+    'if (guard.sends < LIMITS.stopSends) {',
+    'if (guard.sends < 99) {',
     [C],
   ],
   [
@@ -124,7 +125,7 @@ export const MUTANTS = [
   [
     'persist switch-off',
     'src/app.js',
-    "if (guard.kind === 'state') this.persistGuards();",
+    "if (guard.kind === 'state' || previous) this.persistGuards();",
     '',
     [C],
   ],
@@ -174,10 +175,218 @@ export const MUTANTS = [
     '',
     [M],
   ],
+  // Review r1.
+  [
+    'B1 replaced never writes',
+    'src/app.js',
+    "if (guard.replaced || this.guards.get(key) !== guard) {\n                throw new GiraError('aborted', 'replaced');",
+    "if (false) {\n                throw new GiraError('aborted', 'replaced');",
+    [R],
+  ],
+  [
+    'B1 waits the written one',
+    'src/app.js',
+    '    if (previous) await this.bounded(previous, TIMINGS.stopTimeout).catch(() => {});',
+    '',
+    [R],
+  ],
+  [
+    'B2 stop given up after budget',
+    'src/app.js',
+    "      if (guard.step) {\n        this.giveUp(guard, 'notSent', guard.reason);\n        return;\n      }",
+    '',
+    [R],
+  ],
+  [
+    'B2 sent move never again',
+    'src/app.js',
+    "        this.giveUp(guard, 'sentNoAnswer', err.message);\n        return 'final';",
+    "        guard.state = 'noAnswer';\n        return 'unsent';",
+    [R],
+  ],
+  [
+    'I1 close age',
+    'src/app.js',
+    "const max = guard.kind === 'move' ? TIMINGS.moveMaxAge : TIMINGS.stateMaxAge;",
+    'const max = TIMINGS.stateMaxAge;',
+    [R],
+  ],
+  [
+    'I2 switch-off age',
+    'src/app.js',
+    "const max = guard.kind === 'move' ? TIMINGS.moveMaxAge : TIMINGS.stateMaxAge;",
+    "const max = guard.kind === 'move' ? TIMINGS.moveMaxAge : Infinity;",
+    [C],
+  ],
+  [
+    'I2 window',
+    'src/app.js',
+    '    if (this.mono() - guard.okMono > TIMINGS.confirmWindow) return;',
+    '',
+    [C],
+  ],
+  [
+    'I2 answered dropped after window',
+    'src/app.js',
+    '    if (guard.ok) return now - guard.okMono > TIMINGS.confirmWindow;',
+    '    if (guard.ok) return false;',
+    [C],
+  ],
+  [
+    'I2 no confirm read in pause',
+    'src/app.js',
+    '      this.closed ||\n      this.paused() ||\n      this.guards.get(this.guardKey(guard.address, guard.fid)) !== guard',
+    '      this.closed ||\n      this.guards.get(this.guardKey(guard.address, guard.fid)) !== guard',
+    [C],
+  ],
+  [
+    'I2 /data date',
+    'src/store.js',
+    '        now - g.at <= TIMINGS.stateMaxAge;',
+    '        true;',
+    ['test/store.test.js'],
+  ],
+  [
+    'I2 unreadable OnOff done',
+    'src/app.js',
+    '    if (!this.pointReadable(guard.fid, guard.dpid)) {',
+    '    if (false) {',
+    [R],
+  ],
+  [
+    'I3 registered again on a stop',
+    'src/app.js',
+    "          if (err?.kind === 'auth' && !registeredAgain && token === this.token) {",
+    '          if (false) {',
+    [R],
+  ],
+  [
+    'I3 once per send',
+    'src/app.js',
+    "          if (err?.kind === 'auth' && !registeredAgain && token === this.token) {",
+    "          if (err?.kind === 'auth' && token === this.token) {",
+    [R],
+  ],
+  [
+    'I5 own registration',
+    'src/app.js',
+    '    if (!own && this.tokenPromise?.key === key) return this.tokenPromise.promise;',
+    '    if (this.tokenPromise?.key === key) return this.tokenPromise.promise;',
+    [R],
+  ],
+  [
+    'I4 /data read again',
+    'src/app.js',
+    '      this.armMemoryRetry();\n    }\n    this.memoryTimes();',
+    '    }\n    this.memoryTimes();',
+    [R],
+  ],
+  [
+    'I6 excluded',
+    'src/app.js',
+    '    if (this.config.excluded.has(fid) || this.config.excluded.has(writer?.target)) {',
+    '    if (false) {',
+    [R],
+  ],
+  [
+    'I6 gate close needs option',
+    'src/model.js',
+    "          ? op(upDown, closeValue, { protective: false, kind: 'move', need: 'open' })",
+    "          ? op(upDown, closeValue, { protective: true, kind: 'move' })",
+    [R],
+  ],
+  [
+    'I6 awning closes up',
+    'src/model.js',
+    "      const closeValue = sense === 'awning' ? 0 : 1;",
+    '      const closeValue = 1;',
+    [R],
+  ],
+  [
+    'm1 stop slots',
+    'src/app.js',
+    '    if (this.stopSlotsUsed < LIMITS.stopSlots) {',
+    '    if (true) {',
+    [R],
+  ],
+  ['token= stripped', 'src/gira.js', "    .replace(/\\btoken=\\S*/gi, '***')", '', [G]],
+  [
+    'I8 paused refusal',
+    'src/app.js',
+    "    if (this.paused()) throw this.refusal('paused');",
+    '',
+    [R],
+  ],
+  [
+    'I8 checkReady before byte',
+    'src/app.js',
+    "      if (this.mono() > deadline) throw this.refusal('tooLate');\n      this.checkReady(op);\n      // A stop arrived",
+    "      if (this.mono() > deadline) throw this.refusal('tooLate');\n      // A stop arrived",
+    [R],
+  ],
+  [
+    'I8 stop in flight',
+    'src/app.js',
+    "    if (guard?.inFlight) throw this.refusal('stopInFlight');",
+    '',
+    [R],
+  ],
+  ['I8 trust same fp', 'src/app.js', '      pending.fp !== fp ||', '', [R]],
+  ['I8 trust window', 'src/app.js', 'this.mono() - pending.at > TIMINGS.trustWindow', 'false', [R]],
+  ['I8 test spacing', 'src/app.js', 'now - this.lastTest.at < TIMINGS.testSpacing', 'false', [R]],
+  ['I8 fresh on created', 'src/app.js', 'this.mono() - last.at <= TIMINGS.freshness && ', '', [R]],
+  [
+    'I8 lift not in flight',
+    'src/app.js',
+    '    if (guard && !guard.inFlight && (guard.sentMark',
+    '    if (guard && (guard.sentMark',
+    [R],
+  ],
+  [
+    'I8 envelope',
+    'src/app.js',
+    "if (info?.info !== 'GDS-REST-API') throw",
+    'if (false) throw',
+    [R],
+  ],
+  [
+    'I8 unreadable not saved',
+    'src/app.js',
+    "    if (this.memoryState !== 'loaded') return Promise.reject(new Error('/data unreadable'));",
+    '',
+    [R],
+  ],
+  ['I8 close closed', 'src/app.js', '    if (open === 0) {', '    if (false) {', [R]],
+  [
+    'I8 close closer',
+    'src/app.js',
+    '    if (guard.before !== undefined && open !== undefined && open < guard.before) {',
+    '    if (false) {',
+    [R],
+  ],
+  ['I8 close twice', 'src/app.js', 'if (guard.changed >= 2) {', 'if (guard.changed >= 1) {', [R]],
 ];
 
 /** Equivalent mutants, with the reason (no test can tell them apart). */
 export const EQUIVALENT = [
+  [
+    'B2 stop never later',
+    'src/app.js',
+    '    if (guard.ok || guard.stuck || guard.step) return;',
+    'a stop guard is always given up or dropped by its first send; none is left for the timer',
+  ],
+  [
+    'I8 backoff under interval',
+    'src/app.js',
+    'return Math.max(backoff, this.readInterval());',
+    'tick() puts any read before the interval off to its due time (mutant "tick early")',
+  ],
+  [
+    'I8 restore this address',
+    'src/app.js',
+    '      if (g.address !== this.config.address) continue;\n      const key',
+    'guardSendable() never sends a guard of another address; guardRecords() keeps it',
+  ],
   [
     'blocked guard waits',
     'src/app.js',

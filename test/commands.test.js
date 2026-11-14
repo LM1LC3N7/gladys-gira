@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PASSWORD, TOKEN } from './helpers/fakeGira.js';
+import { PASSWORD, TOKEN, fakeGira } from './helpers/fakeGira.js';
 import { pause, setup, waitFor, within } from './helpers/setup.js';
 
 const ackError = (ack) => ack.error ?? '';
@@ -192,55 +192,143 @@ test('a stop pressed while the password is refused: kept, nothing sent, leaves f
   }, 'the stop sent with the new password');
   const after = s.gw.requests.slice(before);
   assert.equal(after[0].path, '/clients');
-  assert.equal(after[1].method, 'PUT', 'the stop before any read');
+  const firstPut = after.findIndex((r) => r.method === 'PUT');
+  const firstGet = after.findIndex((r) => r.method === 'GET');
+  assert.ok(firstPut >= 0 && (firstGet < 0 || firstPut < firstGet), 'the stop before any read');
 });
 
-test('a stop that never reached the server is not counted: sent again until it lands, no age limit', async (t) => {
+test('a switch-off that never reached the server: kept, sent every 5 s, lands when the server is back', async (t) => {
   const s = await setup(t);
-  s.gw.values.a031 = '1';
-  let down = true;
-  s.gw.drop = (r) => down && r.method === 'PUT';
+  const port = s.gw.port;
+  await s.gw.close();
   const ack = await fireUntil(s, 'a030', 'on', 0);
   assert.equal(ack.success, false);
   assert.match(ackError(ack), /kept/i);
-  assert.ok(s.gw.puts('a031').length >= 3, 'two quick retries within the budget');
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 6; i += 1) {
     await s.advance(5000);
     await pause(10);
   }
   const guard = [...s.app.guards.values()][0];
-  assert.equal(guard.answered, 0);
-  assert.ok(s.gw.puts('a031').length > 10);
+  assert.equal(guard.sends, 0, 'nothing reached the server: not counted');
+  assert.equal(s.store.data.guards.length, 1, 'kept in /data, dated');
+  assert.ok(Number.isFinite(s.store.data.guards[0].at));
   await s.app.showStatus();
   assert.match(s.message(), /Stops kept: Flur/);
-  down = false;
-  for (let i = 0; i < 80 && s.gw.values.a031 !== '0'; i += 1) {
+  const back = await fakeGira({ port });
+  t.after(() => back.close());
+  back.values.a031 = '1';
+  await waitFor(async () => {
     await s.advance(500);
-    await pause(10);
-  }
-  assert.equal(s.gw.values.a031, '0', 'the stop landed');
-  await waitFor(() => s.app.guards.size === 0, 'applied, dropped');
+    return back.values.a031 === '0';
+  }, 'the stop landed');
+  await waitFor(async () => {
+    await s.advance(100);
+    return s.app.guards.size === 0;
+  }, 'applied, dropped');
+  assert.equal(s.store.data.guards.length, 0);
 });
 
-test('a stop read back not applied: sent again, 4 answered sends at most, then shown and kept', async (t) => {
+test('a switch-off never sent is given up 10 min after the click', async (t) => {
+  const s = await setup(t);
+  await s.gw.close();
+  await fireUntil(s, 'a030', 'on', 0);
+  for (let i = 0; i < 125; i += 1) {
+    await s.advance(5000);
+    await pause(2);
+  }
+  assert.equal(s.app.guards.size, 0);
+  assert.equal(s.store.data.guards.length, 0);
+});
+
+test('a switch-off sent without answer: "without confirmation", read back, never replayed blindly', async (t) => {
+  const s = await setup(t);
+  s.gw.values.a031 = '1';
+  s.gw.drop = (r) => r.method === 'PUT';
+  const ack = await fireUntil(s, 'a030', 'on', 0);
+  assert.equal(ack.success, false);
+  assert.match(ackError(ack), /without answer/);
+  assert.equal(s.gw.puts('a031').length, 1, 'no quick retry once it reached the server');
+  assert.equal((s.store.data.guards ?? []).length, 0, 'never kept in /data once sent');
+});
+
+test('a switch-off read back not applied in its 10 s: sent again, 4 sends at most, then given up', async (t) => {
   const s = await setup(t);
   s.gw.values.a031 = '1';
   s.gw.applySets = false;
   const ack = await s.fire('a030', 'on', 0);
   assert.equal(ack.success, true, 'taken by the server');
-  for (let i = 0; i < 10; i += 1) {
-    await s.advance(5000);
-    await pause(30);
+  for (let i = 0; i < 40; i += 1) {
+    await s.advance(500);
+    await pause(10);
   }
-  assert.equal(s.gw.puts('a031').length, 4, 'never more than 4 answered sends');
-  const guard = [...s.app.guards.values()][0];
-  assert.equal(guard.stuck, true);
-  await s.app.showStatus();
-  assert.match(s.message(), /still not applied after 4 sends/);
-  assert.equal(s.store.data.guards.length, 1, 'still kept');
-  s.gw.values.a031 = '0';
+  assert.equal(s.gw.puts('a031').length, 4, 'never more than 4 sends');
+  for (let i = 0; i < 6; i += 1) {
+    await s.advance(5000);
+    await pause(10);
+  }
+  assert.equal(s.app.guards.size, 0, 'given up after its window');
+  assert.equal(s.gw.puts('a031').length, 4);
+});
+
+test('a switch-off applied, the light switched on by hand after its window: never switched off again', async (t) => {
+  const s = await setup(t);
+  s.gw.values.a031 = '1';
+  let fail = true;
+  s.gw.replyFor = (r) =>
+    fail && r.method === 'GET' && r.path === '/values/a030' ? { status: 503, body: {} } : undefined;
+  const ack = await s.fire('a030', 'on', 0);
+  assert.equal(ack.success, true);
+  s.gw.values.a031 = '1';
+  for (let i = 0; i < 3; i += 1) {
+    await s.advance(5000);
+    await pause(10);
+  }
+  fail = false;
   await s.cycle();
-  await waitFor(() => s.app.guards.size === 0, 'dropped on the read');
+  await s.advance(10_000);
+  await pause(30);
+  assert.equal(s.gw.values.a031, '1');
+  assert.equal(s.gw.puts('a031').length, 1);
+});
+
+test('a read showing a switch-off not applied after its 10 s window never sends it again', async (t) => {
+  const s = await setup(t);
+  s.gw.values.a031 = '1';
+  s.gw.applySets = false;
+  let fail = true;
+  s.gw.replyFor = (r) =>
+    fail && r.method === 'GET' && r.path === '/values/a030' ? { status: 503, body: {} } : undefined;
+  const ack = await s.fire('a030', 'on', 0);
+  assert.equal(ack.success, true);
+  // The 5 s timer would drop it at the end of the window: held, to see what a read does then.
+  s.app.timers.clearTimeout(s.app.guardTimer);
+  s.app.guardTimer = 'held';
+  await s.advance(11_000);
+  await pause(20);
+  assert.equal(s.app.guards.size, 1, 'not yet dropped by the timer');
+  fail = false;
+  s.app.lastReadMono = -Infinity;
+  s.app.scheduleRead(s.app.generation, 0);
+  await waitFor(async () => {
+    await s.advance(0);
+    return s.gw.count('GET /values/a030') > 0 && !s.app.reading;
+  }, 'a read after the window');
+  await pause(30);
+  assert.equal(s.gw.puts('a031').length, 1, 'out of the window: never sent again');
+});
+
+test('a kept switch-off: no read during a 429 pause', async (t) => {
+  const s = await setup(t);
+  s.gw.values.a031 = '1';
+  s.gw.applySets = false;
+  s.app.pause({ kind: 'rate', retryAfter: 600_000 });
+  const gets = s.gw.count(/^GET /);
+  await s.fire('a030', 'on', 0);
+  for (let i = 0; i < 6; i += 1) {
+    await s.advance(2000);
+    await pause(10);
+  }
+  assert.equal(s.gw.count(/^GET /), gets, 'no read during the pause');
 });
 
 test('locked (423) on a stop: not counted, sent again at the stop pace', async (t) => {
@@ -273,8 +361,8 @@ test('restart: a kept switch-off leaves first, before any read; a cover close is
     pins: { [address]: s.gw.fingerprint },
     lastReadAt: Date.UTC(2026, 0, 1),
     guards: [
-      { address, fid: 'a030', dpid: 'a031', key: 'OnOff', value: 0, answered: 1 },
-      { address, fid: 'a040', dpid: 'a042', key: 'Up-Down', value: 1, answered: 0 },
+      { address, fid: 'a030', dpid: 'a031', key: 'OnOff', value: 0, at: Date.UTC(2026, 0, 1) },
+      { address, fid: 'a040', dpid: 'a042', key: 'Up-Down', value: 1, at: Date.UTC(2026, 0, 1) },
     ],
   };
   s.gw.values.a031 = '1';

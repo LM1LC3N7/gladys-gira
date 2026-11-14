@@ -67,6 +67,7 @@ export function cleanReason(text, secrets = []) {
   let out = typeof text === 'string' ? text : '';
   for (const s of secrets) if (s) out = out.split(s).join('***');
   return out
+    .replace(/\btoken=\S*/gi, '***')
     .replace(/[0-9A-Za-z]{20,}/g, '***')
     .replace(/[^\x20-\x7e\u00a0-\u024f]/g, ' ')
     .replace(/\s+/g, ' ')

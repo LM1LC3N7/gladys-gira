@@ -49,8 +49,11 @@ nouvel appareil.
    **mot de passe**, puis **enregistrez**. Les noms en `.local` ne sont pas
    résolus dans le conteneur.
 3. Cliquez sur **Faire confiance au certificat** : l'empreinte du certificat du
-   serveur s'affiche, rien d'autre n'est envoyé. Cliquez de nouveau dans les
-   2 minutes pour lui faire confiance.
+   serveur s'affiche, rien d'autre n'est envoyé. Pour la vérifier, ouvrez
+   `https://<adresse du serveur>/` dans un navigateur de votre réseau et
+   comparez l'empreinte SHA-256 dans les détails du certificat. Cliquez de
+   nouveau dans les 2 minutes pour lui faire confiance : il est de confiance à
+   partir de là (confiance au premier usage), et un autre plus tard arrête tout.
 4. Cliquez sur **Tester la connexion** : il vérifie l'API, l'utilisateur et lit
    le projet.
 5. Ajoutez les appareils voulus depuis l'onglet **Découverte**.
@@ -86,7 +89,8 @@ reste :
 - **Autoriser l'allumage et la variation** : allumer une lumière, régler une
   luminosité ;
 - **Autoriser l'ouverture des volets** : ouvrir un volet, ou le placer à une
-  position (toute position sauf fermé peut l'ouvrir) ;
+  position (toute position sauf fermé peut l'ouvrir) ; dérouler un store
+  banne ; fermer une porte de garage ou un portail (voir plus bas) ;
 - **Autoriser les scènes Gira** : une scène du serveur peut tout allumer et
   ouvrir des volets ou des portes.
 
@@ -95,57 +99,88 @@ attend, la commande est refusée.
 
 **Partent toujours**, quelles que soient les options : éteindre une lumière
 (une luminosité de 0 est une extinction), arrêter un volet, fermer un volet
-(une position de 0 est une fermeture). Aucune option, aucune pause 429, aucun
-projet en cours de relecture, aucune lecture ni commande en cours ne les
-retient. Ils annulent les commandes de la même cible encore en attente : rien
-de demandé avant un arrêt ne part après lui.
+roulant (une position de 0 est une fermeture). Aucune option, aucune pause
+429, aucun projet en cours de relecture, aucune lecture ni commande en cours
+ne les retient. Ils annulent les commandes de la même cible encore en
+attente, et la commande protectrice plus ancienne de la même cible : la plus
+récente gagne toujours, et quand l'ancienne est déjà écrite, la nouvelle part
+une fois que le serveur y a répondu.
 
-Un arrêt ne part pas seulement dans ces cas ; il est alors **gardé** (le statut
-le dit) et envoyé dès que possible :
+Attention : les fonctions « Switch » (lumières commutées) peuvent aussi
+alimenter une prise ou une pompe : un « tout éteindre » de Gladys ou d'un
+assistant vocal les coupe aussi. Listez-les dans **Fonctions à ne pas
+proposer** si elles ne doivent jamais être touchées.
 
-- identifiant ou mot de passe absent ou invalide, ou refusé par le serveur :
-  il part en premier dès que de nouveaux sont enregistrés ou que « Tester la
-  connexion » réussit ;
-- pas de certificat de confiance, ou certificat changé : il part une fois le
-  certificat accepté ou reconnu ;
-- serveur injoignable, verrouillé (423, pendant le chargement d'un projet), ou
-  route refusée (401/403) : il est renvoyé toutes les 5 secondes, sans limite
-  de temps ;
+### Stores bannes, portes de garage et portails
+
+L'API de Gira n'a qu'une sorte de fonction pour tous les volets : elle ne
+distingue pas un volet roulant d'un store banne ou d'un portail. Dites-le dans
+la configuration, avec les identifiants des fonctions (`GIRA_FUNCTION` dans la
+Découverte) :
+
+- **Stores bannes (sens inversé)** : « fermer » rentre la toile (monter,
+  jamais retenu : ce qu'il faut avant un orage), « ouvrir » la déroule (option
+  d'ouverture exigée) ; la position est le déroulé. Sans cela, « fermer »
+  (descendre, en KNX) **déroule** un store banne, par exemple dans une scène
+  « vent fort, fermer tous les volets ».
+- **Portes de garage et portails** : fermer exige aussi l'option d'ouverture
+  (quelqu'un peut être dessous) ; arrêter part toujours.
+- **Fonctions à ne pas proposer** : jamais proposées ni commandées, pas même
+  un arrêt (une gâche, une pompe...).
+
+### Quand un arrêt ne part pas
+
+Un arrêt ne part pas seulement dans ces cas :
+
+- identifiant ou mot de passe absent ou invalide, ou refusé par le serveur ;
+- pas de certificat de confiance, ou certificat changé ;
+- serveur injoignable, verrouillé (423, pendant le chargement d'un projet),
+  qui demande de ralentir (429), ou route refusée (401/403) deux fois (un jeton
+  refusé est réinscrit une fois, tout de suite) ;
 - avant la première lecture de la configuration dans Gladys (démarrage du
-  conteneur) : il est refusé, rien envoyé (l'adresse n'est pas encore connue).
+  conteneur) : il est refusé, rien envoyé (l'adresse n'est pas encore connue) ;
+- la fonction est dans **Fonctions à ne pas proposer**.
 
-Après un redémarrage du conteneur, le premier arrêt inscrit de nouveau le
-client avant de partir. Un arrêt sur un point de données que le serveur ne
-connaît plus (404) est abandonné.
+La suite dépend de l'arrêt :
 
-Une extinction reste gardée, aussi dans `/data` (un redémarrage du conteneur
-l'envoie en premier, dès la configuration lue), jusqu'à ce qu'une lecture
-partie après la réponse du serveur la montre appliquée. Si la lecture montre
-le contraire, elle est renvoyée ; seuls les envois auxquels le serveur a
-répondu comptent, 4 au plus. Après 4 refus du serveur ou 4 envois non
-appliqués, elle reste gardée et affichée, sans nouvel envoi, jusqu'à ce qu'une
-lecture la montre appliquée ou qu'une commande plus récente arrive. Une
-commande plus récente de la même cible, prise par le serveur, la remplace.
+- **Arrêter un volet** (« Step-Up-Down » 1) n'est jamais répété : sur un volet
+  à l'arrêt, chaque envoi est un petit pas vers le bas. Il n'est réessayé que
+  si rien n'a atteint le serveur, deux fois dans les 250 ms environ qui
+  suivent votre clic ; ensuite il est abandonné, et la réponse le dit
+  (« Arrêt pas envoyé... cliquez de nouveau »). Envoyé sans réponse du serveur,
+  il n'est jamais renvoyé (« Envoyé, sans réponse »).
+- **Fermer un volet** (« Up-Down ») est réessayé tant que rien n'a atteint le
+  serveur (ou que le serveur l'a refusé sans l'exécuter : 423, 429, 401/403),
+  au plus **20 secondes** après votre clic, toutes les 5 secondes ; sur un
+  volet qui a une position, seulement après une lecture de celle-ci, une fois
+  par lecture : fermé ou en train de se fermer, c'est fait ; lu plus ouvert
+  qu'au moment du clic deux fois de suite, il a été ouvert à la main
+  entre-temps et la fermeture est abandonnée. Pris par le serveur, ou envoyé
+  sans réponse, c'est fait et jamais renvoyé (ni après un redémarrage).
+- **Éteindre une lumière** (« OnOff » 0) est gardé tant que rien n'a atteint
+  le serveur, aussi dans `/data` avec la date de votre clic, et renvoyé toutes
+  les 5 secondes, au plus **10 minutes** après votre clic (un redémarrage du
+  conteneur l'envoie en premier ; plus ancien, il est abandonné). Pris par le
+  serveur, il est relu tout de suite, après 2 et 5 secondes (jamais pendant
+  une pause 429) ; une lecture partie dans les **10 secondes** qui suivent la
+  réponse et qui le montre non appliqué le renvoie (4 envois au plus). Après
+  ces 10 secondes, il est abandonné (« pris, non confirmé ») : une lumière
+  rallumée à la main ensuite n'est jamais éteinte de nouveau. Une extinction
+  qui a atteint le serveur n'est jamais rejouée après un redémarrage. Quand
+  OnOff ne se lit pas sur la fonction, c'est fait dès que le serveur l'a
+  prise.
 
-Un mouvement de volet (fermer, arrêter) est fait dès que le serveur l'a pris,
-et n'est jamais rejoué après un redémarrage. Une fermeture qui n'a pas atteint
-le serveur est d'abord réessayée deux fois dans les 250 ms environ qui suivent
-votre clic ; ensuite, sur un volet qui a une position, elle n'est renvoyée
-qu'après une lecture de la position, une fois par lecture : fermé ou en train
-de se fermer, c'est fait ; lu plus ouvert qu'au moment du clic deux fois de
-suite, il a été ouvert à la main entre-temps et la fermeture est abandonnée.
-Sur un volet sans position, elle est renvoyée toutes les 5 secondes jusqu'à
-ce que le serveur la prenne.
+Une commande plus récente de la même cible, prise par le serveur, remplace un
+arrêt gardé. Après un redémarrage du conteneur, le premier arrêt inscrit de
+nouveau le client avant de partir (sa propre inscription, sans attendre celle
+des lectures). Un arrêt sur un point de données que le serveur ne connaît
+plus (404) est abandonné. 8 requêtes protectrices au plus sont ouvertes à la
+fois (les autres attendent leur tour).
 
-Conventions KNX utilisées : « Up-Down » 0 ouvre et 1 ferme ; un arrêt est
-« Step-Up-Down » 1, qui arrête un volet en mouvement (sur un volet à l'arrêt,
-l'actionneur fait un petit pas vers le bas ou rien) ; la position du serveur
-est en pourcentage fermé, affichée dans Gladys en pourcentage ouvert.
-
-**Vérifiez votre projet** : sur un **store banne**, « fermer » (descendre) le
-déploie. Si une fonction « Volet et store » de votre projet commande une
-**porte de garage ou un portail**, ne l'ajoutez pas à Gladys : la fermeture
-n'est jamais retenue.
+Conventions KNX utilisées : « Up-Down » 0 monte et 1 descend ; un arrêt est
+« Step-Up-Down » 1, qui arrête un volet en mouvement ; la position du serveur
+est en pourcentage fermé (un store banne : pourcentage déroulé), affichée dans
+Gladys en pourcentage ouvert (un store banne : déroulé).
 
 ## Scènes
 
@@ -196,7 +231,11 @@ dernière lecture ; une autre adresse, un autre identifiant ou un autre mot de
 passe enregistré lit tout de suite. Tant que l'utilisateur est refusé,
 « Tester la connexion » essaie tout de suite, une fois par 10 secondes.
 Pendant une pause demandée par le serveur (429), ni le bouton de test ni les
-lectures n'envoient de requête ; seuls les arrêts partent.
+lectures n'envoient de requête, les relectures de confirmation des arrêts non
+plus ; seuls les arrêts partent.
+
+Un projet de plus de 500 fonctions : seules les 500 premières sont proposées,
+et le statut le dit.
 
 ## Limites connues
 
@@ -214,6 +253,8 @@ lectures n'envoient de requête ; seuls les arrêts partent.
   « Tester la connexion ».
 - **« Le serveur est verrouillé »** : un projet est en cours de chargement
   depuis le GPA ; cela revient tout seul.
-- **« /data est illisible »** : l'intégration fonctionne, mais n'apprend et ne
-  garde rien (certificat, arrêts) ; saisissez l'empreinte du certificat dans la
-  configuration.
+- **« /data est illisible »** : il est relu toutes les 10 secondes (une lecture
+  à la fois) ; en attendant, l'intégration n'apprend et ne garde rien
+  (certificat, arrêts), et repart avec ce que contient `/data` une fois lu.
+  Saisir l'empreinte du certificat dans la configuration la fait fonctionner
+  en attendant.

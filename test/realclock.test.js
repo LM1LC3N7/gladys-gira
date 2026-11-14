@@ -56,7 +56,9 @@ test('real clock x20: a stop that does not land is worked on every 5 s, measured
   await waitFor(() => app.online, 'online', 6000);
   gw.values.a031 = '1';
   let down = true;
-  gw.drop = (r) => down && r.method === 'PUT';
+  // Locked (a project being loaded): answered, not executed, sent again every 5 s.
+  gw.replyFor = (r) =>
+    down && r.method === 'PUT' ? { status: 423, body: { error: { code: 'locked' } } } : undefined;
   const spy = spyOn(app, 'workGuard', clock);
   t.after(() => spy.restore());
   const device = { external_id: 'ext:test-integration:function:a030' };

@@ -49,14 +49,14 @@ test('fileStore: writes go one at a time, the last one wins', async (t) => {
   assert.deepEqual(JSON.parse(await readFile(join(d, 'state.json'), 'utf8')), { n: 5 });
 });
 
-test('normalizeMemory: bounded, repaired; future dates not trusted; only switch-offs kept', () => {
+test('normalizeMemory: bounded, repaired; future dates not trusted; only dated switch-offs kept', () => {
   const guard = (extra) => ({
     address: '10.0.0.2:443',
     fid: 'a030',
     dpid: 'a031',
     key: 'OnOff',
     value: 0,
-    answered: 1,
+    at: NOW - 60_000,
     ...extra,
   });
   const m = normalizeMemory(
@@ -71,8 +71,10 @@ test('normalizeMemory: bounded, repaired; future dates not trusted; only switch-
         guard({ fid: 'a050', value: 1 }),
         guard({ fid: '../x' }),
         guard(),
-        guard({ fid: 'a060', dpid: 'a061', answered: 'x' }),
-        guard({ fid: 'a070', dpid: 'a071', answered: 99 }),
+        guard({ fid: 'a060', dpid: 'a061', at: NOW + 1000 }),
+        guard({ fid: 'a070', dpid: 'a071', at: NOW - 11 * 60_000 }),
+        guard({ fid: 'a080', dpid: 'a081', at: 'x' }),
+        guard({ fid: 'a090', dpid: 'a091', at: NOW - 9 * 60_000 }),
       ],
     },
     NOW,
@@ -81,13 +83,10 @@ test('normalizeMemory: bounded, repaired; future dates not trusted; only switch-
   assert.equal(m.refused, null, 'a mark out of 0..63');
   assert.equal(m.pausedUntil, NOW + 6 * 3600_000);
   assert.equal(m.lastReadAt, NOW);
+  // Dated switch-offs only: a future date, more than 10 min, no date: dropped.
   assert.deepEqual(
-    m.guards.map((g) => [g.fid, g.answered]),
-    [
-      ['a030', 1],
-      ['a060', 0],
-      ['a070', 4],
-    ],
+    m.guards.map((g) => g.fid),
+    ['a030', 'a090'],
   );
   assert.deepEqual(normalizeMemory('junk', NOW).guards, []);
   assert.equal(normalizeMemory({ pausedUntil: NOW - 1 }, NOW).pausedUntil, null);

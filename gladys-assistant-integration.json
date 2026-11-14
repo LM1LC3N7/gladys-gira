@@ -28,40 +28,61 @@
       "links": [
         {
           "url": "https://github.com/LM1LC3N7/gladys-gira/blob/main/docs/fr.md",
-          "label": { "en": "Guide (French)", "fr": "Guide (français)" }
+          "label": {
+            "en": "Guide (French)",
+            "fr": "Guide (français)"
+          }
         },
         {
           "url": "https://github.com/LM1LC3N7/gladys-gira/blob/main/docs/en.md",
-          "label": { "en": "Guide (English)", "fr": "Guide (anglais)" }
+          "label": {
+            "en": "Guide (English)",
+            "fr": "Guide (anglais)"
+          }
         }
       ]
     },
     {
       "key": "server_address",
       "type": "string",
-      "label": { "en": "Address of the Gira server", "fr": "Adresse du serveur Gira" },
+      "label": {
+        "en": "Address of the Gira server",
+        "fr": "Adresse du serveur Gira"
+      },
       "description": {
         "en": "The local IP address of your Gira X1 or HomeServer, like 192.168.1.40 (shown in the Gira Project Assistant or in your router). The password is sent to this address only, over its pinned certificate.",
         "fr": "L'adresse IP locale de votre Gira X1 ou HomeServer, par exemple 192.168.1.40 (visible dans le Gira Project Assistant ou dans votre box). Le mot de passe est envoyé à cette adresse seulement, sur son certificat épinglé."
       },
-      "placeholder": { "en": "192.168.1.40", "fr": "192.168.1.40" },
+      "placeholder": {
+        "en": "192.168.1.40",
+        "fr": "192.168.1.40"
+      },
       "required": true
     },
     {
       "key": "username",
       "type": "string",
-      "label": { "en": "User name", "fr": "Identifiant" },
+      "label": {
+        "en": "User name",
+        "fr": "Identifiant"
+      },
       "description": {
         "en": "A user of the Gira server (created in the Gira Project Assistant). A dedicated user for Gladys is best.",
         "fr": "Un utilisateur du serveur Gira (créé dans le Gira Project Assistant). Le mieux est un utilisateur réservé à Gladys."
       },
-      "placeholder": { "en": "gladys", "fr": "gladys" },
+      "placeholder": {
+        "en": "gladys",
+        "fr": "gladys"
+      },
       "required": true
     },
     {
       "key": "password",
       "type": "secret",
-      "label": { "en": "Password", "fr": "Mot de passe" },
+      "label": {
+        "en": "Password",
+        "fr": "Mot de passe"
+      },
       "description": {
         "en": "The password of this user. Kept by Gladys in its database, never shown again, and sent only to the Gira server at the address above.",
         "fr": "Le mot de passe de cet utilisateur. Gardé par Gladys dans sa base, jamais réaffiché, et envoyé seulement au serveur Gira à l'adresse ci-dessus."
@@ -79,14 +100,20 @@
         "en": "The SHA-256 fingerprint of the certificate of the server. Empty: confirmed by your two clicks on \"Trust the certificate\", then checked on every connection (the password never goes to another certificate).",
         "fr": "L'empreinte SHA-256 du certificat du serveur. Vide : confirmée par vos deux clics sur « Faire confiance au certificat », puis vérifiée à chaque connexion (le mot de passe ne part jamais vers un autre certificat)."
       },
-      "placeholder": { "en": "AB:CD:...", "fr": "AB:CD:..." },
+      "placeholder": {
+        "en": "AB:CD:...",
+        "fr": "AB:CD:..."
+      },
       "required": false,
       "default": ""
     },
     {
       "key": "poll_interval",
       "type": "number",
-      "label": { "en": "Read interval (s)", "fr": "Intervalle de lecture (s)" },
+      "label": {
+        "en": "Read interval (s)",
+        "fr": "Intervalle de lecture (s)"
+      },
       "description": {
         "en": "How often the states are read (30 to 3600 s), one request per device created. Never faster, even after a restart.",
         "fr": "Fréquence de lecture des états (30 à 3600 s), une requête par appareil créé. Jamais plus vite, même après un redémarrage."
@@ -99,10 +126,13 @@
     {
       "key": "commands",
       "type": "section",
-      "label": { "en": "Commands", "fr": "Commandes" },
+      "label": {
+        "en": "Commands",
+        "fr": "Commandes"
+      },
       "description": {
-        "en": "Off by default: Gladys only reads. Turning off a light and stopping or closing a cover always leave, whatever the options below. A scene of the server may open covers or doors: it has its own option.",
-        "fr": "Désactivées par défaut : Gladys ne fait que lire. Éteindre une lumière et arrêter ou fermer un volet partent toujours, quelles que soient les options ci-dessous. Une scène du serveur peut ouvrir des volets ou des portes : elle a sa propre option."
+        "en": "Off by default: Gladys only reads. Turning off a light and stopping or closing a shutter always leave, whatever the options below. Beware: on an awning, \"close\" (down, in KNX) extends it, and on a garage door or a gate a close is never held back: list them below. A scene of the server may open covers or doors: it has its own option.",
+        "fr": "Désactivées par défaut : Gladys ne fait que lire. Éteindre une lumière et arrêter ou fermer un volet partent toujours, quelles que soient les options ci-dessous. Attention : sur un store banne, « fermer » (descendre, en KNX) le déroule, et sur une porte de garage ou un portail une fermeture n'est jamais retenue : listez-les ci-dessous. Une scène du serveur peut ouvrir des volets ou des portes : elle a sa propre option."
       }
     },
     {
@@ -122,10 +152,13 @@
     {
       "key": "allow_open",
       "type": "boolean",
-      "label": { "en": "Allow opening covers", "fr": "Autoriser l'ouverture des volets" },
+      "label": {
+        "en": "Allow opening covers",
+        "fr": "Autoriser l'ouverture des volets"
+      },
       "description": {
-        "en": "Off by default. On: Gladys may open the covers and move them to a position (any position but fully closed may open).",
-        "fr": "Désactivé par défaut. Activé : Gladys peut ouvrir les volets et les placer à une position (toute position sauf fermé peut ouvrir)."
+        "en": "Off by default. On: Gladys may open the covers (extend the awnings listed below) and move them to a position (any position but fully closed may open). Garage doors and gates listed below close only with this option.",
+        "fr": "Désactivé par défaut. Activé : Gladys peut ouvrir les volets (dérouler les stores bannes listés ci-dessous) et les placer à une position (toute position sauf fermé peut ouvrir). Les portes de garage et portails listés ci-dessous ne se ferment qu'avec cette option."
       },
       "required": false,
       "default": false
@@ -133,13 +166,70 @@
     {
       "key": "allow_scenes",
       "type": "boolean",
-      "label": { "en": "Allow Gira scenes", "fr": "Autoriser les scènes Gira" },
+      "label": {
+        "en": "Allow Gira scenes",
+        "fr": "Autoriser les scènes Gira"
+      },
       "description": {
         "en": "Off by default: a scene of the server may switch on anything and open covers or doors. On: the scene action \"Run a Gira scene\" runs them.",
         "fr": "Désactivé par défaut : une scène du serveur peut tout allumer et ouvrir des volets ou des portes. Activé : l'action de scène « Lancer une scène Gira » les exécute."
       },
       "required": false,
       "default": false
+    },
+    {
+      "key": "excluded_functions",
+      "type": "string",
+      "label": {
+        "en": "Functions not offered",
+        "fr": "Fonctions à ne pas proposer"
+      },
+      "description": {
+        "en": "The ids of the functions Gladys must neither offer nor command, not even a stop (GIRA_FUNCTION in the Discovery, like a029), separated by commas. For a door opener, a pump, anything Gladys must not touch.",
+        "fr": "Les identifiants des fonctions que Gladys ne doit ni proposer ni commander, pas même un arrêt (GIRA_FUNCTION dans la Découverte, par exemple a029), séparés par des virgules. Pour une gâche, une pompe, tout ce que Gladys ne doit pas toucher."
+      },
+      "placeholder": {
+        "en": "a029, a040",
+        "fr": "a029, a040"
+      },
+      "required": false,
+      "default": ""
+    },
+    {
+      "key": "awning_functions",
+      "type": "string",
+      "label": {
+        "en": "Awnings (reversed direction)",
+        "fr": "Stores bannes (sens inversé)"
+      },
+      "description": {
+        "en": "The ids of the shutter functions that drive an awning, separated by commas. For them, \"close\" retracts (up, never held back) and \"open\" extends (needs the opening option); the position is the extension.",
+        "fr": "Les identifiants des fonctions de volet qui commandent un store banne, séparés par des virgules. Pour eux, « fermer » rentre la toile (monter, jamais retenu) et « ouvrir » la déroule (option d'ouverture exigée) ; la position est le déroulé."
+      },
+      "placeholder": {
+        "en": "a050",
+        "fr": "a050"
+      },
+      "required": false,
+      "default": ""
+    },
+    {
+      "key": "gate_functions",
+      "type": "string",
+      "label": {
+        "en": "Garage doors and gates",
+        "fr": "Portes de garage et portails"
+      },
+      "description": {
+        "en": "The ids of the shutter functions that drive a garage door or a gate, separated by commas. For them, closing needs the opening option too (someone may stand under them); stopping always leaves.",
+        "fr": "Les identifiants des fonctions de volet qui commandent une porte de garage ou un portail, séparés par des virgules. Pour elles, fermer exige aussi l'option d'ouverture (quelqu'un peut être dessous) ; arrêter part toujours."
+      },
+      "placeholder": {
+        "en": "a090",
+        "fr": "a090"
+      },
+      "required": false,
+      "default": ""
     },
     {
       "key": "language",
@@ -155,32 +245,56 @@
       "required": false,
       "default": "fr",
       "options": [
-        { "value": "fr", "label": { "en": "French", "fr": "Français" } },
-        { "value": "en", "label": { "en": "English", "fr": "Anglais" } }
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français"
+          }
+        },
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais"
+          }
+        }
       ]
     }
   ],
   "actions": [
     {
       "key": "trust_certificate",
-      "label": { "en": "Trust the certificate", "fr": "Faire confiance au certificat" },
+      "label": {
+        "en": "Trust the certificate",
+        "fr": "Faire confiance au certificat"
+      },
       "timeout_seconds": 30
     },
     {
       "key": "test_connection",
-      "label": { "en": "Test the connection", "fr": "Tester la connexion" },
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion"
+      },
       "timeout_seconds": 60
     },
     {
       "key": "list_scenes",
-      "label": { "en": "List the scenes", "fr": "Lister les scènes" },
+      "label": {
+        "en": "List the scenes",
+        "fr": "Lister les scènes"
+      },
       "timeout_seconds": 10
     }
   ],
   "scene_actions": [
     {
       "key": "run_scene",
-      "label": { "en": "Run a Gira scene", "fr": "Lancer une scène Gira" },
+      "label": {
+        "en": "Run a Gira scene",
+        "fr": "Lancer une scène Gira"
+      },
       "timeout_seconds": 10,
       "fields": [
         {
@@ -194,13 +308,19 @@
             "en": "Shown by the \"List the scenes\" button of the configuration, like a0f1.",
             "fr": "Donné par le bouton « Lister les scènes » de la configuration, par exemple a0f1."
           },
-          "placeholder": { "en": "a0f1", "fr": "a0f1" },
+          "placeholder": {
+            "en": "a0f1",
+            "fr": "a0f1"
+          },
           "required": true
         },
         {
           "key": "scene",
           "type": "number",
-          "label": { "en": "Scene number", "fr": "Numéro de scène" },
+          "label": {
+            "en": "Scene number",
+            "fr": "Numéro de scène"
+          },
           "description": {
             "en": "The number sent to the scene function, as set in the Gira Project Assistant (0 to 64).",
             "fr": "Le numéro envoyé à la fonction de scène, tel que réglé dans le Gira Project Assistant (0 à 64)."

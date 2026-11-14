@@ -61,8 +61,20 @@ Handoff document: what is done, what was decided, what comes next.
   one at rest, a step down). Confirmed by a read for OnOff, Brightness (within
   1. and Position (within 2); Up-Down is write only: done once taken, read
      again after 5 and 20 s.
-- Covers: no way in the API to tell an awning or a gate from a shutter; the
-  docs ask not to add a gate, and say "close" extends an awning.
+- Covers (review r1): no way in the API to tell an awning or a gate from a
+  shutter; three configuration lists by function id: not offered (nothing,
+  not even a stop), awnings (close = up, protective; open = extend, option),
+  gates (close needs `allow_open`, stop protective).
+- Guards (review r1, B1/B2/I1/I2): one per target, the newest wins, one
+  protective request in flight per target; a stop sent once (retried only
+  when nothing reached the server, within ~250 ms); a close retried while not
+  reached, 20 s at most; a switch-off kept while not reached (dated in /data,
+  10 min at most), confirmed in a 10 s window after its answer (reads 0, 2,
+  5 s, none in a 429 pause), then dropped. A 401/invalidToken on a stop:
+  one registration at once (the stop's own, never waiting for the reads').
+  At most 8 protective connections at once.
+- /data slow or unreadable at start: read again every 10 s (one read at a
+  time), adopted with the session started again.
 - Not offered: Trigger and Press and hold (may drive a door opener), heating,
   sauna, audio, cameras, links, status values, value transmitters.
 - Scenes: scene action with the function id (given by "List the scenes", no

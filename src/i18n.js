@@ -125,6 +125,13 @@ const GUARD_STATES = {
   contradicted: both('read back not applied, sent again', 'relu non appliqué, renvoyé'),
   notApplied: both('still not applied after 4 sends', 'toujours pas appliqué après 4 envois'),
   applied: both('applied', 'appliqué'),
+  replaced: both('replaced by a newer stop', 'remplacé par un arrêt plus récent'),
+  sentNoAnswer: both(
+    'sent without answer, read back for 10 s',
+    'envoyé sans réponse, relu pendant 10 s',
+  ),
+  expired: both('given up: too old', 'abandonné : trop ancien'),
+  takenUnconfirmed: both('taken, not confirmed', 'pris, non confirmé'),
   done: both('taken by the server', 'pris par le serveur'),
   unknown: both('unknown on the server', 'inconnu du serveur'),
   changedElsewhere: both(
@@ -194,6 +201,16 @@ export const T = {
       `Connected: ${counts.offered} functions offered, ${counts.scenes} scene functions; read every ${interval} s.`,
       `Connecté : ${counts.offered} fonctions proposées, ${counts.scenes} fonctions de scène ; lecture toutes les ${interval} s.`,
     ),
+  truncated: (n) =>
+    both(
+      `The project holds more than ${n} functions: only the first ${n} are offered.`,
+      `Le projet contient plus de ${n} fonctions : seules les ${n} premières sont proposées.`,
+    ),
+  invalidLists: (n) =>
+    both(
+      `${n} entry(ies) of the function lists are not function ids: ignored.`,
+      `${n} entrée(s) des listes de fonctions ne sont pas des identifiants de fonction : ignorée(s).`,
+    ),
   configStale: both(
     'The project of the server changed: read again before any command (stops still leave).',
     'Le projet du serveur a changé : relu avant toute commande (les arrêts partent quand même).',
@@ -208,8 +225,8 @@ export const T = {
     fr: `Arrêts gardés : ${list.map((g) => guardLine(g, 'fr')).join(' ; ')}.`,
   }),
   dataUnreadable: both(
-    '/data is unreadable: nothing is learnt nor kept (pin, stops) this run.',
-    "/data est illisible : rien n'est appris ni gardé (épingle, arrêts) pendant ce lancement.",
+    '/data is unreadable: read again every 10 s; meanwhile nothing is learnt nor kept (pin, stops).',
+    "/data est illisible : relu toutes les 10 s ; en attendant, rien n'est appris ni gardé (épingle, arrêts).",
   ),
   badge: {
     stopKept: both(
@@ -307,6 +324,27 @@ export const T = {
       'Sent, not applied yet at the read back: read again in 5 s.',
       'Envoyée, pas encore appliquée à la relecture : relue dans 5 s.',
     ),
+    replaced: both(
+      'Replaced by a newer stop of this device: nothing sent.',
+      'Remplacé par un arrêt plus récent de cet appareil : rien envoyé.',
+    ),
+    stopUnconfirmed: both(
+      'Sent, without answer of the server: never sent again (a cover may have moved).',
+      'Envoyé, sans réponse du serveur : jamais renvoyé (le volet a pu bouger).',
+    ),
+    offUnconfirmed: both(
+      'Sent, without answer of the server: read back in the next 10 s, sent again only if a read shows it not applied.',
+      'Envoyée, sans réponse du serveur : relue dans les 10 s, renvoyée seulement si une lecture la montre non appliquée.',
+    ),
+    stopNotSent: (reason) =>
+      both(
+        `Stop not sent (${reason}): never sent later, click again.`,
+        `Arrêt pas envoyé (${reason}) : jamais envoyé plus tard, cliquez de nouveau.`,
+      ),
+    excluded: both(
+      'This function is in "Functions not offered": nothing sent.',
+      'Cette fonction est dans « Fonctions à ne pas proposer » : rien envoyé.',
+    ),
     stopKept: (g) =>
       both(
         `Stop kept, sent until applied: ${guardLine(g, 'en')}.`,
@@ -346,10 +384,10 @@ export const T = {
         `The fingerprint typed in the configuration is the pin: replace it with ${fp} if you trust this one.`,
         `L'empreinte saisie dans la configuration est l'épingle : remplacez-la par ${fp} si vous faites confiance à celui-ci.`,
       ),
-    confirm: (fp, first) =>
+    confirm: (fp, first, address) =>
       both(
-        `The server shows the certificate ${fp}. Click again within 2 minutes to trust it${first ? '' : ' (only if you replaced the server or renewed its certificate)'}. Nothing was sent.`,
-        `Le serveur présente le certificat ${fp}. Cliquez de nouveau dans les 2 minutes pour lui faire confiance${first ? '' : ' (seulement si vous avez remplacé le serveur ou renouvelé son certificat)'}. Rien n'a été envoyé.`,
+        `The server shows the certificate ${fp}. Nothing was sent. To check it, open https://${address}/ in a browser on your network and compare its SHA-256 fingerprint (certificate details). Click again within 2 minutes to trust it${first ? ' (trusted from then on: a different one later stops everything)' : ' (only if you replaced the server or renewed its certificate)'}.`,
+        `Le serveur présente le certificat ${fp}. Rien n'a été envoyé. Pour le vérifier, ouvrez https://${address}/ dans un navigateur de votre réseau et comparez son empreinte SHA-256 (détails du certificat). Cliquez de nouveau dans les 2 minutes pour lui faire confiance${first ? ' (de confiance à partir de là : un autre plus tard arrête tout)' : ' (seulement si vous avez remplacé le serveur ou renouvelé son certificat)'}.`,
       ),
     done: (fp) => both(`Certificate trusted (${fp}).`, `Certificat de confiance (${fp}).`),
   },

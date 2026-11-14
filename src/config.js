@@ -14,6 +14,9 @@ export const DEFAULT_CONFIG = {
   allow_control: false,
   allow_open: false,
   allow_scenes: false,
+  excluded_functions: '',
+  awning_functions: '',
+  gate_functions: '',
   language: 'fr',
 };
 
@@ -86,6 +89,18 @@ export function parseFingerprint(raw) {
   return { fingerprint: hex.toUpperCase().match(/../g).join(':') };
 }
 
+/** A list of function ids (separated by commas, spaces or semicolons), and the invalid entries. */
+export function parseUidList(raw) {
+  const ids = new Set();
+  let invalid = 0;
+  for (const entry of String(raw ?? '').split(/[\s,;]+/)) {
+    if (entry === '') continue;
+    if (UID.test(entry) && ids.size < 500) ids.add(entry);
+    else invalid += 1;
+  }
+  return { ids, invalid };
+}
+
 /** Only true (or "true") turns an option on: anything else keeps it off. */
 const on = (raw) => raw === true || raw === 'true';
 
@@ -115,7 +130,8 @@ function credentialsOf(c) {
 /**
  * @returns {{ host?: string, port?: number, address?: string, username: string,
  *   password: string, fingerprint?: string, error?: string, pollInterval: number,
- *   allowControl: boolean, allowOpen: boolean, allowScenes: boolean, language: 'fr'|'en' }}
+ *   allowControl: boolean, allowOpen: boolean, allowScenes: boolean, excluded: Set<string>,
+ *   awnings: Set<string>, gates: Set<string>, invalidLists: number, language: 'fr'|'en' }}
  */
 export function normalizeConfig(raw = {}) {
   const c = raw && typeof raw === 'object' ? raw : {};
@@ -123,6 +139,9 @@ export function normalizeConfig(raw = {}) {
   const pin = parseFingerprint(c.certificate_fingerprint);
   const creds = credentialsOf(c);
   const error = target.error ?? pin.error ?? creds.error;
+  const excluded = parseUidList(c.excluded_functions);
+  const awnings = parseUidList(c.awning_functions);
+  const gates = parseUidList(c.gate_functions);
   return {
     host: target.host,
     port: target.port,
@@ -135,12 +154,22 @@ export function normalizeConfig(raw = {}) {
     allowControl: on(c.allow_control),
     allowOpen: on(c.allow_open),
     allowScenes: on(c.allow_scenes),
+    excluded: excluded.ids,
+    awnings: awnings.ids,
+    gates: gates.ids,
+    invalidLists: excluded.invalid + awnings.invalid + gates.invalid,
     language: LANGUAGES.includes(c.language) ? c.language : DEFAULT_CONFIG.language,
   };
 }
 
 /** Two configurations that run the same way (a reconnection to Gladys keeps everything). */
-export const sameConfig = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const comparable = (c) => ({
+  ...c,
+  excluded: [...(c.excluded ?? [])].sort(),
+  awnings: [...(c.awnings ?? [])].sort(),
+  gates: [...(c.gates ?? [])].sort(),
+});
+export const sameConfig = (a, b) => JSON.stringify(comparable(a)) === JSON.stringify(comparable(b));
 
 /** The parts of the configuration that make another session (address, account, pin). */
 export const sameSession = (a, b) =>

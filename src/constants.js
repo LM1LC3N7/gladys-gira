@@ -58,8 +58,15 @@ export const TIMINGS = {
   stopTimeout: 3000,
   /** The quick retries of a stop that did not reach the server (the ~250 ms budget). */
   stopQuickRetries: [80, 170],
-  /** A stop not yet applied is worked on at this pace, without end. */
+  /** A kept guard is worked on at this pace, within its age limit. */
   stopRetry: 5000,
+  /** A switch-off never sent is given up this long after the click (also across a restart). */
+  stateMaxAge: 10 * 60_000,
+  /** A close never sent (or refused unexecuted) is given up this long after the click. */
+  moveMaxAge: 20_000,
+  /** An answered switch-off: reads at these delays; a contradiction counts only in the window. */
+  confirmReads: [0, 2000, 5000],
+  confirmWindow: 10_000,
   /** Read back of a command after its answer. */
   followUps: [5000, 20_000],
   /** One request (TLS + request + answer), and the longest silence inside it. */
@@ -86,6 +93,8 @@ export const TIMINGS = {
   attemptWriteEvery: 60_000,
   /** Longest wait on /data where a wait is allowed (start, shutdown, a pin). */
   dataWait: 2000,
+  /** /data unreadable or slow: read again this often, one read at a time. */
+  dataRetry: 10_000,
   /** States sent to Gladys every second, within the budget. */
   flushInterval: 1000,
   stateHeartbeat: 3600_000,
@@ -103,6 +112,8 @@ export const LIMITS = {
   statesPerMinute: 300,
   /** Non-protective requests at the same time (reads aside); stops never wait for a slot. */
   commandSlots: 4,
+  /** Protective requests at the same time (their own lot of connections). */
+  stopSlots: 8,
   /** Kept stops in /data. */
   guards: 64,
   /** Answered sends of one stop: the first and three resends. */

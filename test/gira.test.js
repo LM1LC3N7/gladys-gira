@@ -117,6 +117,7 @@ test('errors: the PDF codes mapped; Retry-After; nothing secret in a reason', ()
     (err) => err.message === 'bad *** ***',
   );
   assert.equal(cleanReason(`a ${'Q'.repeat(25)} b`), 'a *** b');
+  assert.doesNotMatch(cleanReason('bad url /api/v2/values/a031?token=abc&x=1'), /token=/);
   assert.equal(retryAfterOf('120'), 120_000);
   assert.equal(
     retryAfterOf('Wed, 21 Oct 2026 07:28:00 GMT', 'Wed, 21 Oct 2026 07:27:00 GMT'),

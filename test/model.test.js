@@ -88,7 +88,7 @@ test('credentials: a password without a user name (or the reverse) is refused; o
 
 test('the UI configuration: lights, dimmers, covers offered; scenes listed; others skipped', () => {
   const m = model();
-  assert.deepEqual(m.counts, { functions: 7, offered: 5, skipped: 1, scenes: 1 });
+  assert.deepEqual(m.counts, { functions: 7, offered: 5, skipped: 1, scenes: 1, excluded: 0 });
   const dimmer = m.devices.find((d) => d.external_id.endsWith(':a029'));
   assert.deepEqual(
     dimmer.features.map((f) => [f.external_id.split(':').pop(), f.category, f.type]),

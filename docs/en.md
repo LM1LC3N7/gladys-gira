@@ -46,8 +46,11 @@ A function deleted and created again in the GPA is a new device.
    **password**, and **save**. Names in `.local` do not resolve in the
    container.
 3. Click **Trust the certificate**: the fingerprint of the certificate of the
-   server is shown, nothing else is sent. Click again within 2 minutes to
-   trust it.
+   server is shown, nothing else is sent. To check it, open
+   `https://<address of the server>/` in a browser of your network and compare
+   the SHA-256 fingerprint in the details of the certificate. Click again
+   within 2 minutes to trust it: it is trusted from then on (trust on first
+   use), and a different one later stops everything.
 4. Click **Test the connection**: it checks the API, the user and reads the
    project.
 5. Add the devices you want from the **Discovery** tab.
@@ -79,7 +82,8 @@ certificate** twice, or type this fingerprint in the configuration.
 
 - **Allow switching on and dimming**: switch a light on, set a brightness;
 - **Allow opening covers**: open a cover, or move it to a position (any
-  position but fully closed may open it);
+  position but fully closed may open it); extend an awning; close a garage
+  door or a gate (see below);
 - **Allow Gira scenes**: a scene of the server may switch on anything and
   open covers or doors.
 
@@ -87,53 +91,84 @@ The option is read again right before sending: turned off while a command
 waits, the command is refused.
 
 **Always leave**, whatever the options: turning off a light (a brightness of
-0 is a turning off), stopping a cover, closing a cover (a position of 0 is a
-close). No option, no 429 pause, no project being read again, no read or
-command in flight holds them back. They cancel the commands of the same target
-still waiting: nothing asked before a stop leaves after it.
+0 is a turning off), stopping a cover, closing a shutter (a position of 0 is
+a close). No option, no 429 pause, no project being read again, no read or
+command in flight holds them back. They cancel the commands of the same
+target still waiting, and the older protective command of the same target:
+a newer one always wins, and when the older one is already written, the
+newer one leaves once the server answered it.
 
-A stop does not leave only in these cases; it is then **kept** (the status
-says it) and sent as soon as it can be:
+Beware: the "Switch" functions (switched lights) may also feed a socket or a
+pump: a "turn everything off" of Gladys or of a voice assistant turns them
+off too. List them in **Functions not offered** if they must never be
+touched.
 
-- user name or password missing or invalid, or refused by the server: it
-  leaves first as soon as new ones are saved or "Test the connection"
-  succeeds;
-- no trusted certificate, or certificate changed: it leaves once the
-  certificate is trusted or recognized again;
-- server unreachable, locked (423, while a project is loaded), or the route
-  refused (401/403): it is sent again every 5 seconds, with no time limit;
+### Awnings, garage doors and gates
+
+The API of Gira has one kind of function for every cover: it cannot tell a
+shutter from an awning or a gate. Tell it in the configuration, with the ids
+of the functions (`GIRA_FUNCTION` in the Discovery):
+
+- **Awnings (reversed direction)**: "close" retracts the awning (up, never
+  held back: what you want before a storm), "open" extends it (needs the
+  opening option); the position is the extension. Without this, "close"
+  (down, in KNX) **extends** an awning, for instance in a "strong wind, close
+  every cover" scene.
+- **Garage doors and gates**: closing needs the opening option too (someone
+  may stand under them); stopping always leaves.
+- **Functions not offered**: never offered nor commanded, not even a stop
+  (a door opener, a pump...).
+
+### When a stop does not leave
+
+A stop does not leave only in these cases:
+
+- user name or password missing or invalid, or refused by the server;
+- no trusted certificate, or certificate changed;
+- server unreachable, locked (423, while a project is loaded), or asking to
+  slow down (429), or the route refused (401/403) twice (a refused token is
+  registered again once, at once);
 - before the configuration is first read from Gladys (container start): it
-  is refused, nothing sent (the address is not known yet).
+  is refused, nothing sent (the address is not known yet);
+- the function is in **Functions not offered**.
 
-After a restart of the container, the first stop registers the client again
-before it leaves. A stop on a data point the
-server no longer knows (404) is dropped.
+What happens then depends on the stop:
 
-A switch-off stays kept, also in `/data` (a restart of the container sends it
-first, as soon as the configuration is read), until a read started after the
-answer of the server shows it applied. If the read shows otherwise, it is
-sent again; only the sends the server answered count, 4 at most. After 4
-refusals of the server or 4 sends not applied, it stays kept and shown, with
-no new send, until a read shows it applied or a newer command. A newer
-command of the same target, taken by the server, replaces it.
+- **Stopping a cover** ("Step-Up-Down" 1) is never repeated: on a cover at
+  rest, each one is a short step down. It is tried again only when nothing
+  reached the server, twice within about 250 ms of your click; then it is
+  given up, and the answer says so ("Stop not sent... click again"). Sent
+  without an answer of the server, it is never sent again ("Sent, without
+  answer").
+- **Closing a cover** ("Up-Down") is tried again while nothing reached the
+  server (or the server refused it unexecuted: 423, 429, 401/403), at most
+  **20 seconds** after your click, every 5 seconds; on a cover with a
+  position, only after a read of it, once per read: closed or closing, it is
+  done; read more open than when you clicked twice in a row, it was opened by
+  hand meanwhile and the close is dropped. Taken by the server, or sent
+  without an answer, it is done and never sent again (nor after a restart).
+- **Turning off a light** ("OnOff" 0) is kept while nothing reached the
+  server, also in `/data` with the date of your click, and sent again every
+  5 seconds, at most **10 minutes** after your click (a restart of the
+  container sends it first; older, it is dropped). Taken by the server, it is
+  read back at once, after 2 and 5 seconds (never during a 429 pause); a read
+  started in the **10 seconds** after the answer that shows it not applied
+  sends it again (4 sends at most). After these 10 seconds, it is dropped
+  ("taken, not confirmed"): a light switched on by hand afterwards is never
+  switched off again. A switch-off that reached the server is never replayed
+  after a restart. When OnOff cannot be read on the function, it is done once
+  the server took it.
 
-A cover move (close, stop) is done once the server took it, and is never
-replayed after a restart. A close that did not reach the server is first
-tried again twice within about 250 ms of your click; after that, on a cover
-with a position, it is sent again only after a read of the position, once per
-read: closed or closing, it is done; read more open than when you clicked
-twice in a row, it was opened by hand meanwhile and the close is dropped. On a
-cover without a position, it is sent again every 5 seconds until the server
-takes it.
+A newer command of the same target, taken by the server, replaces a kept
+stop. After a restart of the container, the first stop registers the client
+again before it leaves (its own registration, never waiting for one of the
+reads). A stop on a data point the server no longer knows (404) is dropped.
+At most 8 protective requests are open at once (the others wait their turn).
 
-KNX conventions used: "Up-Down" 0 opens and 1 closes; a stop is "Step-Up-Down"
-1, which stops a moving cover (on a cover at rest, the actuator makes a short
-step down or nothing); the position of the server is in percent closed, shown
-in Gladys in percent open.
-
-**Check your project**: on an **awning**, "close" (down) extends it. If a
-"Shutter and blind" function of your project drives a **garage door or a
-gate**, do not add it to Gladys: closing is never held back.
+KNX conventions used: "Up-Down" 0 is up and 1 is down; a stop is
+"Step-Up-Down" 1, which stops a moving cover; the position of the server is
+in percent closed (an awning: percent extended), shown in Gladys in percent
+open (an awning: extended).
 
 ## Scenes
 
@@ -179,7 +214,10 @@ again), nor a restart of the container reads before the interval after the
 last read; another address, user or password saved reads at once. While the user is
 refused, "Test the connection" tries at once, once per 10 seconds. During a
 pause asked by the server (429), neither the Test button nor the reads send a
-request; only the stops leave.
+request, the confirmation reads of the stops neither; only the stops leave.
+
+A project of more than 500 functions: only the first 500 are offered, and
+the status says so.
 
 ## Known limits
 
@@ -194,6 +232,7 @@ request; only the stops leave.
   in the GPA, save the right password or click "Test the connection".
 - **"The server is locked"**: a project is being loaded from the GPA; it comes
   back by itself.
-- **"/data is unreadable"**: the integration works, but learns and keeps
-  nothing (certificate, stops); type the fingerprint of the certificate in the
-  configuration.
+- **"/data is unreadable"**: it is read again every 10 seconds (one read at a
+  time); meanwhile the integration learns and keeps nothing (certificate,
+  stops), and starts again with what `/data` holds once it is read. Typing the
+  fingerprint of the certificate in the configuration lets it work meanwhile.

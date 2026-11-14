@@ -47,14 +47,18 @@ scripts/mutants.mjs               mutants of the guards (list and runner)
   opening covers and any position but closed (`allow_open`), scenes
   (`allow_scenes`). Never a `switch` feature.
 - **Stops are never held back**: turn off (brightness 0 included), cover stop
-  (Step-Up-Down 1) and close (Up-Down 1, position 0 included). Not by an
-  option, a 429 pause, a project being read again, a read or a command in
-  flight, full slots, nor a slow /data (never awaited on their path). They
-  wait only for what the account needs (credentials, their acceptance, a
-  trusted certificate) and are then kept and sent first. A switch-off stays
-  kept (in /data) until a read started after the server's answer shows it
-  applied; at most 4 answered sends; a newer command taken by the server
-  lifts it. A cover move is done once taken, never replayed after a restart.
+  (Step-Up-Down 1) and close (Up-Down 1, position 0 included; an awning
+  closes up, a gate never closes without `allow_open`). Not by an option, a
+  429 pause, a project being read again, a read or a command in flight, full
+  slots, nor a slow /data. One guard per target, the newest wins (a replaced
+  guard never writes a byte); a protective request waits for the one of its
+  target already written.
+- **Bounded**: a stop (Step-Up-Down, not idempotent) is never repeated once
+  something reached the server, tried again only within ~250 ms; a close is
+  retried while nothing reached the server, at most 20 s; a switch-off never
+  sent is kept (dated in /data) at most 10 min; once answered, it is confirmed
+  in a 10 s window only (reads at 0, 2, 5 s, never in a 429 pause), then
+  dropped. Nothing that reached the server is replayed after a restart.
 - **Nothing sent before a stop leaves after it**: every command checks the
   stop count of its target right before its first byte (`beforeSend`).
 - **A read started before a command never applies to its target after it**
@@ -73,7 +77,10 @@ scripts/mutants.mjs               mutants of the guards (list and runner)
   401/403 elsewhere is not a refusal: on the main read (`uiconfig/uid`), one
   new registration then the read again, once; on the values of a function,
   "not read", spaced; on a command, "refused on this route".
-- /data unreadable is never taken for empty (nothing learnt or written over it).
+- /data unreadable is never taken for empty (nothing learnt or written over
+  it); read again every 10 s, one read at a time, then adopted.
+- `excluded_functions` (never offered nor commanded), `awning_functions`
+  (direction reversed), `gate_functions` (closing needs `allow_open`).
 - Clocks: monotonic for every decision; wall time only for /data.
 
 ## Rules

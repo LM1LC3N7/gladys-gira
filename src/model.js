@@ -98,10 +98,12 @@ export function functionOf(raw) {
 
 /** The UI configuration, bounded: `{ uid, functions: Map<uid, function> }`. */
 export function inventoryOf(json) {
-  const out = { uid: undefined, functions: new Map() };
+  const out = { uid: undefined, functions: new Map(), truncated: false };
   if (!json || typeof json !== 'object' || Array.isArray(json)) return out;
   if (typeof json.uid === 'string' && UID.test(json.uid)) out.uid = json.uid;
   if (!Array.isArray(json.functions)) return out;
+  // Beyond the bound, the rest is not offered: said in the status.
+  out.truncated = json.functions.length > LIMITS.functions;
   const seenPoints = new Set();
   for (const raw of json.functions.slice(0, LIMITS.functions)) {
     const fn = functionOf(raw);
@@ -203,7 +205,7 @@ export function emptyModel() {
     readPoints: new Map(),
     /** scene functions: uid -> { uid, label, execute } */
     scenes: new Map(),
-    counts: { functions: 0, offered: 0, skipped: 0, scenes: 0 },
+    counts: { functions: 0, offered: 0, skipped: 0, scenes: 0, excluded: 0 },
   };
 }
 
@@ -213,12 +215,17 @@ export function emptyModel() {
  * @param {{ language?: 'fr'|'en' }} options
  */
 export function buildModel(idsOf, functions, options = {}) {
-  const { language = 'fr' } = options;
+  const { language = 'fr', excluded = new Set(), awnings = new Set(), gates = new Set() } = options;
   const model = emptyModel();
   const name = (key) => featureName(key, language);
 
   for (const fn of functions.values()) {
     model.counts.functions += 1;
+    // Not offered by the user's choice ("Functions not offered").
+    if (excluded.has(fn.uid)) {
+      model.counts.excluded += 1;
+      continue;
+    }
     const found = roleOf(fn);
     if (!found) {
       model.counts.skipped += 1;
@@ -312,8 +319,21 @@ export function buildModel(idsOf, functions, options = {}) {
       }
     } else if (role === 'cover') {
       const { upDown, step, position } = found;
+      const sense = coverSense(fn.uid, { awnings, gates });
+      // KNX: Up-Down 0 up, 1 down. An awning closes (retracts) up; a shutter down.
+      const closeValue = sense === 'awning' ? 0 : 1;
+      const closedAt = sense === 'awning' ? 0 : 100;
+      // A gate (garage door): closing needs the opening option, it is never protective.
       const close = () =>
-        op(upDown, 1, { protective: true, kind: 'move', close: true, posDpid: position?.uid });
+        sense === 'gate'
+          ? op(upDown, closeValue, { protective: false, kind: 'move', need: 'open' })
+          : op(upDown, closeValue, {
+              protective: true,
+              kind: 'move',
+              close: true,
+              posDpid: position?.uid,
+              closedAt,
+            });
       const stop = () => op(step, 1, { protective: true, kind: 'move' });
       add(
         'state',
@@ -324,30 +344,32 @@ export function buildModel(idsOf, functions, options = {}) {
             if (v === COVER_STATE.CLOSE) return close();
             if (v === COVER_STATE.STOP) return stop();
             if (v === COVER_STATE.OPEN) {
-              return op(upDown, 0, { protective: false, kind: 'move', need: 'open' });
+              return op(upDown, 1 - closeValue, { protective: false, kind: 'move', need: 'open' });
             }
             return bad();
           },
         },
       );
       if (position) {
+        // Gladys position: percent open (an awning: percent extended).
+        const toKnx = (open) => (closedAt === 100 ? 100 - open : open);
         add(
           'position',
           { category: C.SHUTTER, type: T.SHUTTER.POSITION, max: 100 },
           {
             dp: position,
             read: (text) => {
-              const closed = percent(text);
-              return closed === undefined ? undefined : 100 - Math.round(closed);
+              const knx = percent(text);
+              return knx === undefined ? undefined : toKnx(Math.round(knx));
             },
             write: position.canWrite
               ? (value) => {
                   const v = commandNumber(value);
                   if (v === undefined || v < 0 || v > 100) return bad();
                   const open = Math.round(v);
-                  // Fully closed is a close (protective); any other position may open.
+                  // Fully closed is a close (protective but on a gate); any other position may open.
                   if (open === 0) return close();
-                  return op(position, 100 - open, {
+                  return op(position, toKnx(open), {
                     protective: false,
                     kind: 'move',
                     need: 'open',
@@ -369,6 +391,9 @@ export function buildModel(idsOf, functions, options = {}) {
       params: [
         { name: 'GIRA_FUNCTION', value: fn.uid },
         { name: 'GIRA_CHANNEL', value: fn.channelType },
+        ...(role === 'cover'
+          ? [{ name: 'GIRA_SENSE', value: coverSense(fn.uid, { awnings, gates }) }]
+          : []),
         // The data points of the stops: a stop leaves even before the first read.
         ...[
           ['GIRA_ONOFF', found.onOff],
@@ -382,6 +407,13 @@ export function buildModel(idsOf, functions, options = {}) {
     });
   }
   return model;
+}
+
+/** How a cover moves: 'shutter', 'awning' (direction reversed) or 'gate' (closing needs the option). */
+export function coverSense(uid, { awnings = new Set(), gates = new Set() } = {}) {
+  if (gates.has(uid)) return 'gate';
+  if (awnings.has(uid)) return 'awning';
+  return 'shutter';
 }
 
 /** The Gladys values of one data point value: `[{ featureId, value }]`. */
@@ -418,13 +450,13 @@ export function applied(op, text) {
  * (yet): after a restart before the first read. Only protective commands,
  * from the device's own params (its data points); undefined for anything else.
  */
-export function stopFromDevice(device, feature, value) {
+export function stopFromDevice(device, feature, value, options = {}) {
   const param = (n) => {
     const found = (Array.isArray(device?.params) ? device.params : []).find((p) => p?.name === n);
     return typeof found?.value === 'string' && UID.test(found.value) ? found.value : undefined;
   };
   const fid = param('GIRA_FUNCTION');
-  if (!fid) return undefined;
+  if (!fid || options.excluded?.has(fid)) return undefined;
   const key = String(feature?.external_id ?? '')
     .split(':')
     .pop();
@@ -438,10 +470,18 @@ export function stopFromDevice(device, feature, value) {
   const step = param('GIRA_STEP');
   const position = param('GIRA_POSITION');
   if ((key === 'state' || key === 'position') && upDown) {
-    if ((key === 'state' && v === COVER_STATE.CLOSE) || (key === 'position' && v === 0)) {
-      return op(upDown, 'Up-Down', 1, 'move', { close: true, posDpid: position });
-    }
     if (key === 'state' && v === COVER_STATE.STOP) return op(step, 'Step-Up-Down', 1, 'move');
+    // The sense of today's configuration (a gate never closes without the option).
+    const sense = coverSense(fid, options);
+    if (sense === 'gate') return undefined;
+    if ((key === 'state' && v === COVER_STATE.CLOSE) || (key === 'position' && v === 0)) {
+      const awning = sense === 'awning';
+      return op(upDown, 'Up-Down', awning ? 0 : 1, 'move', {
+        close: true,
+        posDpid: position,
+        closedAt: awning ? 0 : 100,
+      });
+    }
     return undefined;
   }
   if ((key === 'on' || key === 'brightness') && v === 0) return op(onOff, 'OnOff', 0, 'state');

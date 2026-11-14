@@ -13,8 +13,9 @@ Unofficial, not affiliated with Gira. **Never tested with a real device yet.**
   client and gets a token, kept in memory only.
 - Safety: writes are off by default (switching on and dimming, opening covers,
   scenes: one option each); turning off a light and stopping or closing a
-  cover are never held back by an option, a pause, a read or a command in
-  flight (a switch-off is kept until read back applied).
+  shutter are never held back by an option, a pause, a read or a command in
+  flight, and bounded in time (a cover stop is never repeated); awnings,
+  garage doors and gates are declared by function id.
 - Store: Germany, Austria and Switzerland (`countries`), where Gira sells the
   X1, the One and the HomeServer (gira.de, gira.com/at, gira.ch).
 

@@ -24,4 +24,9 @@ the notes of the version's GitHub Release.
 - Writes off by default (one option for switching on and dimming, one for
   opening covers, one for scenes); turning off, stopping and closing never
   held back; a switch-off kept in /data until read back applied.
+- Lists of functions: not offered, awnings (reversed direction), garage doors
+  and gates (closing needs the opening option).
+- Stops bounded in time: a cover stop never repeated, a close tried 20 s at
+  most, a switch-off kept 10 min at most and confirmed in 10 s; the newest
+  protective command of a device always wins.
 - `countries`: DE, AT, CH (Gladys 5.3.0 or later).

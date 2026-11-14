@@ -5,8 +5,9 @@
 //   - a user name and password refused by the server, as a 6-bit salted mark
 //     only (it can never tell them, it only says "the same ones were refused");
 //   - the end of a 429 pause, the time of the last read;
-//   - the switch-offs not yet seen applied: sent again first after a restart.
-//     A cover move is never kept (never replayed without a click).
+//   - the switch-offs that never reached the server, with the date of the
+//     click: sent first after a restart, at most 10 min after the click. A
+//     cover move, or a switch-off that reached the server, is never replayed.
 // No token, no password, no label, no personal data.
 //
 // `load()` tells "no file" (null) from "a file that cannot be read" (throws):
@@ -141,6 +142,7 @@ export function normalizeMemory(raw, now) {
     const seen = new Set();
     for (const g of data.guards.slice(0, LIMITS.guards)) {
       if (!g || typeof g !== 'object') continue;
+      // A switch-off never sent, dated: a date in the future or too old is dropped.
       const ok =
         typeof g.address === 'string' &&
         ADDRESS.test(g.address) &&
@@ -149,7 +151,10 @@ export function normalizeMemory(raw, now) {
         typeof g.dpid === 'string' &&
         UID.test(g.dpid) &&
         g.key === 'OnOff' &&
-        g.value === 0;
+        g.value === 0 &&
+        Number.isFinite(g.at) &&
+        g.at <= now &&
+        now - g.at <= TIMINGS.stateMaxAge;
       const key = `${g.address} ${g.fid}`;
       if (!ok || seen.has(key)) continue;
       seen.add(key);
@@ -158,10 +163,8 @@ export function normalizeMemory(raw, now) {
         fid: g.fid,
         dpid: g.dpid,
         key: g.key,
-        value: g.value,
-        answered: Number.isInteger(g.answered)
-          ? Math.min(LIMITS.stopSends, Math.max(0, g.answered))
-          : 0,
+        value: 0,
+        at: g.at,
       });
     }
   }
