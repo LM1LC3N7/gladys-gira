@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-14
+
 ### Added
 
 - Gira X1, HomeServer and FacilityServer over the Gira IoT REST API v2:
@@ -32,3 +34,6 @@ the notes of the version's GitHub Release.
   moving), a close tried 20 s at most, a switch-off kept 10 min at most and
   confirmed in 10 s; the newest protective command of a device always wins.
 - `countries`: DE, AT, CH (Gladys 5.3.0 or later).
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-gira/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-gira/releases/tag/v0.1.1

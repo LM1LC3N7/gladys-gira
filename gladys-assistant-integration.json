@@ -6,8 +6,8 @@
     "en": "Gira X1 and HomeServer lights, covers and scenes, through the local IoT REST API. Unofficial.",
     "fr": "Lumières, volets et scènes Gira X1 et HomeServer, par l'API IoT REST locale. Non officiel."
   },
-  "version": "0.1.0",
-  "docker_image": "ghcr.io/lm1lc3n7/gladys-gira:0.1.0",
+  "version": "0.1.1",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-gira:0.1.1",
   "gladys_version": ">=5.3.0",
   "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-gira/main/cover.png",
   "categories": ["lighting", "protocols"],

@@ -1,6 +1,6 @@
 {
   "name": "gladys-gira",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Gladys Assistant external integration for Gira X1, HomeServer and FacilityServer, through the local Gira IoT REST API v2: lights, dimmers, covers and scenes; writes off by default, stops never held back, certificate pinned. Unofficial, not affiliated with Gira.",
   "type": "module",
