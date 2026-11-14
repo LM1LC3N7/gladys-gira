@@ -62,6 +62,12 @@ export const TIMINGS = {
   stopRetry: 5000,
   /** A switch-off never sent is given up this long after the click (also across a restart). */
   stateMaxAge: 10 * 60_000,
+  /** A cover stop that never left: tried again at this pace, within 3 s (10 s when Movement is read first). */
+  stopRetryStep: 1000,
+  stopWindow: 3000,
+  stopWindowMovement: 10_000,
+  /** The read of Movement before a stop is sent again (or before a gate stop). */
+  movementRead: 1000,
   /** A close never sent (or refused unexecuted) is given up this long after the click. */
   moveMaxAge: 20_000,
   /** An answered switch-off: reads at these delays; a contradiction counts only in the window. */

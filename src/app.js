@@ -36,6 +36,7 @@ import { T, word } from './i18n.js';
 import {
   Refusal,
   applied,
+  bit,
   buildModel,
   channelOfDevice,
   cleanText,
@@ -1281,10 +1282,10 @@ export class GiraApp {
   // `beforeSend`). A protective request waits for the one of the same target
   // already written (one in flight per target, the newest wins).
   //
-  // - A stop (Step-Up-Down 1) is not idempotent (on a cover at rest, a step
-  //   down): sent once; tried again only when nothing reached the server, within
-  //   the ~250 ms budget; then given up, said in the ack. Never sent again by a
-  //   timer, after a 423 or a lost answer.
+  // - A stop (Step-Up-Down) is not idempotent (on a cover at rest, a step):
+  //   never sent again once something reached the server. Never reached: tried
+  //   again every ~1 s (runStop), 10 s with Movement read first, else 3 s; then
+  //   given up, said in the ack.
   // - A close (Up-Down 1) is sent again only while nothing reached the server
   //   (or it was refused unexecuted: 423, 429, 401/403), at most 20 s after the
   //   click; with a position, only after a read of it. Sent without an answer,
@@ -1359,6 +1360,8 @@ export class GiraApp {
       value: op.value,
       kind: op.kind,
       step: op.key === 'Step-Up-Down',
+      movementDpid: op.movementDpid,
+      gate: Boolean(op.gate),
       created: this.mono(),
       at: this.now(),
       sends: 0,
@@ -1432,6 +1435,12 @@ export class GiraApp {
     if (guard.state === 'refused' || guard.state === 'unknown') {
       throw this.refusal('refused', guard.reason ?? 'error');
     }
+    if (guard.state === 'alreadyStopped') return undefined;
+    if (guard.state === 'excluded') throw this.refusal('excluded');
+    if (guard.step && guard.inFlight) {
+      // Still trying (nothing reached the server yet): said as it is.
+      throw this.refusal('stopTrying', Math.round(this.stopWindow(guard) / 1000));
+    }
     if (guard.givenUp && guard.state === 'notSent') {
       throw this.refusal('stopNotSent', guard.reason ?? 'error');
     }
@@ -1451,6 +1460,11 @@ export class GiraApp {
       guard.state = 'noAccount';
       return false;
     }
+    if (c.excluded.has(guard.fid)) {
+      // Excluded since it was kept: never sent.
+      this.giveUp(guard, 'excluded');
+      return false;
+    }
     if (this.blocked) {
       guard.state = 'refusedCredentials';
       return false;
@@ -1468,11 +1482,8 @@ export class GiraApp {
       guard.again = true;
       return guard.inFlight;
     }
-    if (!this.guardSendable(guard)) {
-      // A stop that cannot leave now never leaves later.
-      if (guard.step) this.giveUp(guard, 'notSent', guard.state);
-      return Promise.resolve();
-    }
+    if (guard.step) return this.runStop(guard);
+    if (!this.guardSendable(guard)) return Promise.resolve();
     // A close sent again after a read of the cover leaves once for that read,
     // without quick retries: the cover may be opened by hand right after it.
     const quick = guard.close && guard.needRead ? [] : TIMINGS.stopQuickRetries;
@@ -1483,17 +1494,7 @@ export class GiraApp {
           if (!this.guardSendable(guard)) break;
         }
         const outcome = await this.sendGuardOnce(guard);
-        if (outcome === 'wait' && guard.step) {
-          // A stop that cannot leave now never leaves later.
-          this.giveUp(guard, 'notSent', guard.reason ?? guard.state);
-          return;
-        }
         if (outcome !== 'unsent') return;
-      }
-      // Nothing reached the server within the budget.
-      if (guard.step) {
-        this.giveUp(guard, 'notSent', guard.reason);
-        return;
       }
       // A close is sent again only after a read (the cover may have been opened by hand).
       if (guard.close && guard.posDpid) guard.needRead = true;
@@ -1502,7 +1503,74 @@ export class GiraApp {
       const again = guard.again;
       guard.again = false;
       // Asked again meanwhile (a flush, new credentials): once more, unless taken.
-      if (again && !guard.ok && !guard.step) this.retryGuard(guard);
+      if (again && !guard.ok) this.retryGuard(guard);
+    });
+    return guard.inFlight;
+  }
+
+  /** How long a stop that never left is tried: 10 s when Movement tells, else 3 s. */
+  stopWindow(guard) {
+    return guard.movementDpid ? TIMINGS.stopWindowMovement : TIMINGS.stopWindow;
+  }
+
+  /**
+   * Movement of the cover now (a read started after the click, ~1 s): 1, 0,
+   * or undefined when not read.
+   */
+  async readMovement(guard) {
+    try {
+      await this.stopToken();
+      const map = valuesOfAnswer(
+        await this.stopClient(guard).values(guard.fid, { timeout: TIMINGS.movementRead }),
+      );
+      const b = bit(map.get(guard.movementDpid));
+      return b;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * A cover stop (Step-Up-Down: on a cover at rest, a step): never sent again
+   * once something reached the server. Nothing reached it: tried again every
+   * ~1 s, within 10 s when Movement is read before each try (0: already
+   * stopped, given up; 1: sent), else within 3 s; then given up. A gate is
+   * stopped only when Movement does not show it at rest.
+   */
+  runStop(guard) {
+    guard.inFlight = (async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        if (!this.guardSendable(guard)) {
+          this.giveUp(guard, 'notSent', guard.reason ?? guard.state);
+          return;
+        }
+        if (guard.movementDpid && (attempt > 0 || guard.gate)) {
+          const moving = await this.readMovement(guard);
+          if (moving === 0) {
+            this.giveUp(guard, 'alreadyStopped');
+            return;
+          }
+          // Not read (undefined): in doubt, the stop leaves.
+        }
+        if (!this.guardSendable(guard)) {
+          this.giveUp(guard, 'notSent', guard.reason ?? guard.state);
+          return;
+        }
+        const outcome = await this.sendGuardOnce(guard);
+        if (outcome === 'wait') {
+          this.giveUp(guard, 'notSent', guard.reason ?? guard.state);
+          return;
+        }
+        if (outcome !== 'unsent') return;
+        if (this.mono() - guard.created + TIMINGS.stopRetryStep > this.stopWindow(guard)) {
+          this.giveUp(guard, 'notSent', guard.reason);
+          return;
+        }
+        await new Promise((resolve) => this.timers.setTimeout(resolve, TIMINGS.stopRetryStep));
+      }
+    })().finally(() => {
+      guard.inFlight = undefined;
+      guard.again = false;
     });
     return guard.inFlight;
   }
@@ -1537,14 +1605,26 @@ export class GiraApp {
   async stopSlot() {
     if (this.stopSlotsUsed < LIMITS.stopSlots) {
       this.stopSlotsUsed += 1;
-      return;
+      return true;
     }
-    await new Promise((resolve) => this.stopSlotWaiters.push(resolve));
+    // Bounded: a stop never leaves long after its click for want of a connection.
+    return new Promise((resolve) => {
+      const waiter = {};
+      waiter.timer = this.timers.setTimeout(() => {
+        this.stopSlotWaiters = this.stopSlotWaiters.filter((w) => w !== waiter);
+        resolve(false);
+      }, TIMINGS.stopTimeout);
+      waiter.resolve = () => {
+        this.timers.clearTimeout(waiter.timer);
+        resolve(true);
+      };
+      this.stopSlotWaiters.push(waiter);
+    });
   }
 
   stopSlotRelease() {
     const next = this.stopSlotWaiters.shift();
-    if (next) next();
+    if (next) next.resolve();
     else this.stopSlotsUsed = Math.max(0, this.stopSlotsUsed - 1);
   }
 
@@ -1559,10 +1639,15 @@ export class GiraApp {
     const previous = this.flights.get(key);
     if (previous) await this.bounded(previous, TIMINGS.stopTimeout).catch(() => {});
     if (!this.guardSendable(guard)) return 'gone';
-    await this.stopSlot();
+    if (!(await this.stopSlot())) {
+      guard.state = 'notSent';
+      guard.reason = 'no free connection';
+      return 'unsent';
+    }
     try {
       let registeredAgain = false;
       for (;;) {
+        if (this.closed) return 'gone';
         let token;
         try {
           token = await this.stopToken();
@@ -1590,10 +1675,13 @@ export class GiraApp {
           });
         } catch (err) {
           // The token is gone (user recreated, PDF 4.2): one registration, in this send.
-          if (err?.kind === 'auth' && !registeredAgain && token === this.token) {
+          if (err?.kind === 'auth' && !registeredAgain) {
             registeredAgain = true;
-            this.token = '';
-            this.tokenFor = '';
+            // Only its own token is dropped (another send may have registered meanwhile).
+            if (token === this.token) {
+              this.token = '';
+              this.tokenFor = '';
+            }
             continue;
           }
           return this.guardFailed(guard, err);

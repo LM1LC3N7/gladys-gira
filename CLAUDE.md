@@ -53,8 +53,11 @@ scripts/mutants.mjs               mutants of the guards (list and runner)
   slots, nor a slow /data. One guard per target, the newest wins (a replaced
   guard never writes a byte); a protective request waits for the one of its
   target already written.
-- **Bounded**: a stop (Step-Up-Down, not idempotent) is never repeated once
-  something reached the server, tried again only within ~250 ms; a close is
+- **Bounded**: a stop (Step-Up-Down, not idempotent; 0 on an awning) is never
+  repeated once something reached the server; never reached, it is tried
+  again every ~1 s for 10 s with Movement read first (0: given up), else 3 s;
+  a gate stop leaves only when Movement does not show it at rest (without
+  Movement: `allow_open`); a close is
   retried while nothing reached the server, at most 20 s; a switch-off never
   sent is kept (dated in /data) at most 10 min; once answered, it is confirmed
   in a 10 s window only (reads at 0, 2, 5 s, never in a 429 pause), then

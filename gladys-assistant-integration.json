@@ -203,8 +203,8 @@
         "fr": "Stores bannes (sens inversé)"
       },
       "description": {
-        "en": "The ids of the shutter functions that drive an awning, separated by commas. For them, \"close\" retracts (up, never held back) and \"open\" extends (needs the opening option); the position is the extension.",
-        "fr": "Les identifiants des fonctions de volet qui commandent un store banne, séparés par des virgules. Pour eux, « fermer » rentre la toile (monter, jamais retenu) et « ouvrir » la déroule (option d'ouverture exigée) ; la position est le déroulé."
+        "en": "The ids of the shutter functions that drive an awning, separated by commas. For them, \"close\" retracts (up, never held back) and \"open\" extends (needs the opening option); the position is the extension; a stop steps up (in).",
+        "fr": "Les identifiants des fonctions de volet qui commandent un store banne, séparés par des virgules. Pour eux, « fermer » rentre la toile (monter, jamais retenu) et « ouvrir » la déroule (option d'ouverture exigée) ; la position est le déroulé ; un arrêt fait un pas vers le haut."
       },
       "placeholder": {
         "en": "a050",
@@ -221,8 +221,8 @@
         "fr": "Portes de garage et portails"
       },
       "description": {
-        "en": "The ids of the shutter functions that drive a garage door or a gate, separated by commas. For them, closing needs the opening option too (someone may stand under them); stopping always leaves.",
-        "fr": "Les identifiants des fonctions de volet qui commandent une porte de garage ou un portail, séparés par des virgules. Pour elles, fermer exige aussi l'option d'ouverture (quelqu'un peut être dessous) ; arrêter part toujours."
+        "en": "The ids of the shutter functions that drive a garage door or a gate, separated by commas. For them, closing needs the opening option too (someone may stand under them); a stop (a step) leaves only when Movement does not show the gate at rest, or with the opening option when the function has no Movement.",
+        "fr": "Les identifiants des fonctions de volet qui commandent une porte de garage ou un portail, séparés par des virgules. Pour elles, fermer exige aussi l'option d'ouverture (quelqu'un peut être dessous) ; un arrêt (un pas) ne part que si Movement ne montre pas le portail à l'arrêt, ou avec l'option d'ouverture quand la fonction n'a pas de Movement."
       },
       "placeholder": {
         "en": "a090",

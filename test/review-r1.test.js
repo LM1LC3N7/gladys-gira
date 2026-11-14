@@ -114,18 +114,31 @@ test('B2: a stop dropped after the request, or refused locked, never sent after 
   assert.match(ackError(ack), /without answer/);
   assert.equal(s.gw.puts('a041').length, 1, 'reached the server: never again');
   s.gw.drop = () => false;
+  s.gw.values.a043 = '1'; // moving: each try is read first, then sent
   s.gw.replyFor = (r) =>
     r.method === 'PUT' ? { status: 423, body: { error: { code: 'locked' } } } : undefined;
   ack = await fireUntil(s, 'a040', 'state', 0);
-  assert.match(ackError(ack), /Stop not sent/);
-  const n = s.gw.puts('a041').length;
-  assert.ok(n <= 4, `${n}: the first and two quick retries`);
+  assert.match(ackError(ack), /Stop not sent yet .* up to 10 s/);
+  for (let i = 0; i < 30; i += 1) {
+    await s.advance(500);
+    await pause(5);
+  }
+  const n = s.gw.puts('a041').length - 1;
+  assert.ok(n >= 5 && n <= 11, `${n} tries, about one a second for 10 s`);
+  assert.equal(s.app.guards.size, 0, 'given up');
+  // Without Movement (a050): about 3 s.
+  await fireUntil(s, 'a050', 'state', 0);
+  for (let i = 0; i < 20; i += 1) {
+    await s.advance(500);
+    await pause(5);
+  }
+  assert.ok(s.gw.puts('a051').length <= 4, `${s.gw.puts('a051').length} tries`);
   s.gw.replyFor = () => undefined;
   for (let i = 0; i < 10; i += 1) {
     await s.advance(5000);
     await pause(5);
   }
-  assert.equal(s.gw.puts('a041').length, n, 'never sent later');
+  assert.equal(s.gw.puts('a041').length, n + 1, 'never sent later');
   assert.equal(s.app.guards.size, 0);
 });
 
@@ -338,7 +351,11 @@ test('I6: awnings reversed, gates closing only with the option, excluded functio
     'a gate closes only with the option',
   );
   ack = await s.fire('a050', 'state', 0);
-  assert.equal(ack.success, true, 'a gate stops always');
+  assert.match(
+    ackError(ack),
+    /Opening covers is not allowed/,
+    'a gate without Movement: its stop needs the option',
+  );
   const off = await within(
     s.fake.setValue(
       {
@@ -362,6 +379,149 @@ test('I6: awnings reversed, gates closing only with the option, excluded functio
   ack = await s.fire('a040', 'position', 70);
   assert.equal(ack.success, true, ackError(ack));
   assert.deepEqual(s.gw.puts('a044').at(-1).json, { value: 70 });
+});
+
+test('I1 r2: an awning stops up; a gate stops only when Movement does not show it at rest', async (t) => {
+  const s = await setup(t, { config: { awning_functions: 'a050', gate_functions: 'a040' } });
+  let ack = await s.fire('a050', 'state', 0);
+  assert.equal(ack.success, true, ackError(ack));
+  assert.deepEqual(s.gw.puts('a051').at(-1).json, { value: 0 }, 'an awning stop is a step up (in)');
+  s.gw.values.a043 = '0';
+  ack = await s.fire('a040', 'state', 0);
+  assert.equal(ack.success, true, ackError(ack));
+  assert.equal(s.gw.puts('a041').length, 0, 'a gate at rest: nothing sent');
+  s.gw.values.a043 = '1';
+  ack = await s.fire('a040', 'state', 0);
+  assert.equal(ack.success, true, ackError(ack));
+  assert.deepEqual(s.gw.puts('a041').at(-1).json, { value: 1 }, 'a moving gate: stopped');
+  s.gw.replyFor = (r) =>
+    r.method === 'GET' && r.path === '/values/a040' ? { status: 503, body: {} } : undefined;
+  await s.fire('a040', 'state', 0);
+  assert.equal(s.gw.puts('a041').length, 2, 'Movement not read: in doubt, the stop leaves');
+});
+
+test('I3 r2: after a restart, before the first read, a listed gate never closes without the option', async (t) => {
+  const s = await setup(t, { config: { gate_functions: 'a040, a050' } });
+  s.app.stop();
+  s.app.inventory = undefined;
+  s.app.memoryState = 'unloaded';
+  await within(s.app.start(s.raw), 'restart');
+  assert.equal(s.app.model.writers.size, 0);
+  const before = s.gw.puts('a042').length;
+  for (const [key, value] of [
+    ['state', -1],
+    ['position', 0],
+  ]) {
+    const ack = await s.fire('a040', key, value);
+    assert.equal(ack.success, false, key);
+  }
+  assert.equal(s.gw.puts('a042').length, before);
+  // A gate without Movement: its stop needs the option, refused before the first read too.
+  const stop = await s.fire('a050', 'state', 0);
+  assert.equal(stop.success, false);
+  assert.equal(s.gw.puts('a051').length, 0);
+});
+
+test('m1 r2: a kept switch-off of a function excluded since is never sent', async (t) => {
+  const s = await setup(t);
+  const port = s.gw.port;
+  await s.gw.close();
+  const pending = s.fire('a030', 'on', 0);
+  await s.advance(3500);
+  await pending;
+  assert.equal(s.app.guards.size, 1);
+  s.app.config = { ...s.app.config, excluded: new Set(['a030']) };
+  const back = await fakeGira({ port });
+  t.after(() => back.close());
+  for (let i = 0; i < 3; i += 1) {
+    await s.advance(5000);
+    await pause(20);
+  }
+  assert.equal(back.puts('a031').length, 0);
+  assert.equal(s.app.guards.size, 0);
+});
+
+test('m2 r2: a stop waiting for a free connection is not sent late', async (t) => {
+  const s = await setup(t);
+  s.app.stopSlotsUsed = 99;
+  s.gw.values.a043 = '0';
+  const ack = s.fire('a050', 'state', 0);
+  for (let i = 0; i < 12; i += 1) {
+    await s.advance(500);
+    await pause(5);
+  }
+  await ack;
+  assert.equal(s.app.guards.size, 0, 'given up while waiting');
+  s.app.stopSlotsUsed = 0;
+  s.app.stopSlotRelease();
+  await pause(50);
+  assert.equal(s.gw.puts('a051').length, 0);
+  assert.equal(s.app.guards.size, 0);
+});
+
+test('m4 r2: no read back of a cover during a 429 pause (taken close, close kept)', async (t) => {
+  const s = await setup(t);
+  s.app.pause({ kind: 'rate', retryAfter: 600_000 });
+  const gets = s.gw.count('GET /values/a040');
+  let ack = await s.fire('a040', 'state', -1);
+  assert.equal(ack.success, true, ackError(ack));
+  await pause(50);
+  assert.equal(s.gw.count('GET /values/a040'), gets, 'no read back');
+  s.gw.replyFor = (r) =>
+    r.method === 'PUT' ? { status: 423, body: { error: { code: 'locked' } } } : undefined;
+  await fireUntil(s, 'a040', 'state', -1);
+  for (let i = 0; i < 3; i += 1) {
+    await s.advance(5000);
+    await pause(20);
+  }
+  assert.equal(s.gw.count('GET /values/a040'), gets, 'no checkClose read');
+});
+
+test('m4 r2: a close sent again after a read leaves once for that read', async (t) => {
+  const s = await setup(t);
+  s.gw.replyFor = (r) =>
+    r.method === 'PUT' ? { status: 423, body: { error: { code: 'locked' } } } : undefined;
+  await fireUntil(s, 'a040', 'state', -1);
+  const n = s.gw.puts('a042').length;
+  await s.advance(5000);
+  await waitFor(() => !s.app.guardOf('a040')?.reading && !s.app.guardOf('a040')?.inFlight, 'idle');
+  await pause(300);
+  assert.equal(s.gw.puts('a042').length, n + 1);
+});
+
+test('m4 r2: a stop whose registration is refused is given up, said', async (t) => {
+  const s = await setup(t);
+  s.app.token = '';
+  s.app.tokenFor = '';
+  s.gw.password = 'changed';
+  const ack = await s.fire('a040', 'state', 0);
+  assert.match(ackError(ack), /Stop not sent/);
+  assert.equal(s.app.guards.size, 0);
+  assert.equal(s.gw.puts('a041').length, 0);
+});
+
+test('m4 r2: a stop refused for credentials says it is not sent', async (t) => {
+  const s = await setup(t);
+  s.app.refuseCredentials({
+    key: s.app.accountKey(),
+    address: s.app.config.address,
+    username: s.app.config.username,
+    password: s.app.config.password,
+  });
+  const ack = await s.fire('a040', 'state', 0);
+  assert.match(ackError(ack), /Stop not sent/);
+});
+
+test('m4 r2: two stops on a stale token: one registration, both land', async (t) => {
+  const s = await setup(t);
+  s.gw.token = 'Dd9TNYIsYLJLsrw68Z3goYdQf6uiO4jI';
+  s.gw.latency = (r) => (r.method === 'PUT' && r.path === '/values/a041' ? 400 : 0);
+  s.gw.values.a031 = '1';
+  const before = s.gw.count('POST /clients');
+  const [a, b] = await Promise.all([s.fire('a030', 'on', 0), s.fire('a040', 'state', 0)]);
+  assert.equal(a.success, true, ackError(a));
+  assert.equal(b.success, true, ackError(b));
+  assert.equal(s.gw.count('POST /clients'), before + 1);
 });
 
 // --- m1 ------------------------------------------------------------------------------

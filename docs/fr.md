@@ -120,13 +120,19 @@ Découverte) :
 
 - **Stores bannes (sens inversé)** : « fermer » rentre la toile (monter,
   jamais retenu : ce qu'il faut avant un orage), « ouvrir » la déroule (option
-  d'ouverture exigée) ; la position est le déroulé. Sans cela, « fermer »
+  d'ouverture exigée) ; la position est le déroulé ; un arrêt est un pas vers
+  le haut (vers l'intérieur). Sans cela, « fermer »
   (descendre, en KNX) **déroule** un store banne, par exemple dans une scène
   « vent fort, fermer tous les volets ».
 - **Portes de garage et portails** : fermer exige aussi l'option d'ouverture
-  (quelqu'un peut être dessous) ; arrêter part toujours.
+  (quelqu'un peut être dessous). Un arrêt est un pas, qui fait bouger un
+  portail à l'arrêt : quand la fonction a un point « Movement », il est lu
+  d'abord et l'arrêt ne part que si le portail n'est pas montré à l'arrêt (pas
+  lu : dans le doute, l'arrêt part) ; sans « Movement », arrêter un portail
+  exige aussi l'option d'ouverture.
 - **Fonctions à ne pas proposer** : jamais proposées ni commandées, pas même
-  un arrêt (une gâche, une pompe...).
+  un arrêt (une gâche, une pompe...) ; un arrêt gardé avant l'ajout de la
+  fonction à la liste est abandonné.
 
 ### Quand un arrêt ne part pas
 
@@ -135,20 +141,25 @@ Un arrêt ne part pas seulement dans ces cas :
 - identifiant ou mot de passe absent ou invalide, ou refusé par le serveur ;
 - pas de certificat de confiance, ou certificat changé ;
 - serveur injoignable, verrouillé (423, pendant le chargement d'un projet),
-  qui demande de ralentir (429), ou route refusée (401/403) deux fois (un jeton
-  refusé est réinscrit une fois, tout de suite) ;
+  qui demande de ralentir (429), ou route refusée (403 ; ou 401 de nouveau
+  après la réinscription unique qu'un jeton refusé déclenche tout de suite) ;
 - avant la première lecture de la configuration dans Gladys (démarrage du
   conteneur) : il est refusé, rien envoyé (l'adresse n'est pas encore connue) ;
 - la fonction est dans **Fonctions à ne pas proposer**.
 
 La suite dépend de l'arrêt :
 
-- **Arrêter un volet** (« Step-Up-Down » 1) n'est jamais répété : sur un volet
-  à l'arrêt, chaque envoi est un petit pas vers le bas. Il n'est réessayé que
-  si rien n'a atteint le serveur, deux fois dans les 250 ms environ qui
-  suivent votre clic ; ensuite il est abandonné, et la réponse le dit
-  (« Arrêt pas envoyé... cliquez de nouveau »). Envoyé sans réponse du serveur,
-  il n'est jamais renvoyé (« Envoyé, sans réponse »).
+- **Arrêter un volet** (« Step-Up-Down ») n'est jamais renvoyé une fois que
+  quelque chose a atteint le serveur : sur un volet à l'arrêt, chaque envoi est
+  un petit pas (vers le bas, vers le haut pour un store banne). Quand rien n'a
+  atteint le serveur (refus, trop lent, verrouillé), il est réessayé environ
+  toutes les secondes : jusqu'à 10 secondes quand la fonction a « Movement »,
+  lu avant chaque nouvel essai (0 : déjà arrêté, abandonné ; 1 : envoyé),
+  sinon jusqu'à 3 secondes environ. Ensuite il est abandonné. La réponse dit ce
+  qui s'est passé : fait, « Arrêt pas encore parti... réessayé jusqu'à N s,
+  puis abandonné », ou « Arrêt pas envoyé... cliquez de nouveau ». Envoyé sans
+  réponse du serveur, il n'est jamais renvoyé (« Envoyé, sans réponse »). Un
+  arrêt qui attend une connexion libre attend 3 secondes au plus.
 - **Fermer un volet** (« Up-Down ») est réessayé tant que rien n'a atteint le
   serveur (ou que le serveur l'a refusé sans l'exécuter : 423, 429, 401/403),
   au plus **20 secondes** après votre clic, toutes les 5 secondes ; sur un

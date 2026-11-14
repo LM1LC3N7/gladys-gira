@@ -132,6 +132,8 @@ const GUARD_STATES = {
   ),
   expired: both('given up: too old', 'abandonné : trop ancien'),
   takenUnconfirmed: both('taken, not confirmed', 'pris, non confirmé'),
+  alreadyStopped: both('already stopped (Movement 0)', 'déjà arrêté (Movement 0)'),
+  excluded: both('function not offered: dropped', 'fonction non proposée : abandonné'),
   done: both('taken by the server', 'pris par le serveur'),
   unknown: both('unknown on the server', 'inconnu du serveur'),
   changedElsewhere: both(
@@ -336,6 +338,11 @@ export const T = {
       'Sent, without answer of the server: read back in the next 10 s, sent again only if a read shows it not applied.',
       'Envoyée, sans réponse du serveur : relue dans les 10 s, renvoyée seulement si une lecture la montre non appliquée.',
     ),
+    stopTrying: (s) =>
+      both(
+        `Stop not sent yet (server not reached): tried again for up to ${s} s after your click, then given up. Check the cover and click again if needed.`,
+        `Arrêt pas encore parti (serveur pas joint) : réessayé jusqu'à ${s} s après votre clic, puis abandonné. Vérifiez le volet et cliquez de nouveau si besoin.`,
+      ),
     stopNotSent: (reason) =>
       both(
         `Stop not sent (${reason}): never sent later, click again.`,

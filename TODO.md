@@ -66,8 +66,10 @@ Handoff document: what is done, what was decided, what comes next.
   not even a stop), awnings (close = up, protective; open = extend, option),
   gates (close needs `allow_open`, stop protective).
 - Guards (review r1, B1/B2/I1/I2): one per target, the newest wins, one
-  protective request in flight per target; a stop sent once (retried only
-  when nothing reached the server, within ~250 ms); a close retried while not
+  protective request in flight per target; a stop sent once (review r2:
+  never reached, retried every ~1 s, 10 s with Movement read first, 0 = given
+  up, else 3 s; awning stop = Step-Up-Down 0; gate stop only when Movement
+  does not show it at rest, without Movement it needs `allow_open`); a close retried while not
   reached, 20 s at most; a switch-off kept while not reached (dated in /data,
   10 min at most), confirmed in a 10 s window after its answer (reads 0, 2,
   5 s, none in a 429 pause), then dropped. A 401/invalidToken on a stop:

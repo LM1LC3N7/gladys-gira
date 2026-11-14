@@ -175,7 +175,9 @@ export function roleOf(fn) {
       const step = p('Step-Up-Down');
       if (!upDown?.canWrite || !step?.canWrite) return undefined;
       const position = p('Position');
-      return { role: 'cover', upDown, step, position };
+      // Movement (read, optional): whether the cover is moving now.
+      const movement = p('Movement')?.canRead ? p('Movement') : undefined;
+      return { role: 'cover', upDown, step, position, movement };
     }
     case CHANNELS.SCENE_SET: {
       const execute = p('Execute');
@@ -334,7 +336,19 @@ export function buildModel(idsOf, functions, options = {}) {
               posDpid: position?.uid,
               closedAt,
             });
-      const stop = () => op(step, 1, { protective: true, kind: 'move' });
+      // A stop is a step, which moves a cover at rest: towards closed for a
+      // shutter, up (in) for an awning. A gate at rest would step: its stop
+      // leaves only when Movement shows it moving (read first); without
+      // Movement, it needs the opening option.
+      const stop = () =>
+        sense === 'gate' && !found.movement
+          ? op(step, 1, { protective: false, kind: 'move', need: 'open' })
+          : op(step, sense === 'awning' ? 0 : 1, {
+              protective: true,
+              kind: 'move',
+              movementDpid: found.movement?.uid,
+              gate: sense === 'gate',
+            });
       add(
         'state',
         { category: C.SHUTTER, type: T.SHUTTER.STATE, min: -1, max: 1 },
@@ -400,6 +414,7 @@ export function buildModel(idsOf, functions, options = {}) {
           ['GIRA_UPDOWN', found.upDown],
           ['GIRA_STEP', found.step],
           ['GIRA_POSITION', found.position],
+          ['GIRA_MOVEMENT', found.movement],
         ]
           .filter(([, dp]) => dp)
           .map(([n, dp]) => ({ name: n, value: dp.uid })),
@@ -469,10 +484,19 @@ export function stopFromDevice(device, feature, value, options = {}) {
   const upDown = param('GIRA_UPDOWN');
   const step = param('GIRA_STEP');
   const position = param('GIRA_POSITION');
+  const movement = param('GIRA_MOVEMENT');
   if ((key === 'state' || key === 'position') && upDown) {
-    if (key === 'state' && v === COVER_STATE.STOP) return op(step, 'Step-Up-Down', 1, 'move');
-    // The sense of today's configuration (a gate never closes without the option).
+    // The sense of today's configuration.
     const sense = coverSense(fid, options);
+    if (key === 'state' && v === COVER_STATE.STOP) {
+      // A gate without Movement: its stop needs the option (refused here, before the first read).
+      if (sense === 'gate' && !movement) return undefined;
+      return op(step, 'Step-Up-Down', sense === 'awning' ? 0 : 1, 'move', {
+        movementDpid: movement,
+        gate: sense === 'gate',
+      });
+    }
+    // A gate never closes without the option.
     if (sense === 'gate') return undefined;
     if ((key === 'state' && v === COVER_STATE.CLOSE) || (key === 'position' && v === 0)) {
       const awning = sense === 'awning';

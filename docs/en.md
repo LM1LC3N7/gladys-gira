@@ -111,13 +111,17 @@ of the functions (`GIRA_FUNCTION` in the Discovery):
 
 - **Awnings (reversed direction)**: "close" retracts the awning (up, never
   held back: what you want before a storm), "open" extends it (needs the
-  opening option); the position is the extension. Without this, "close"
+  opening option); the position is the extension; a stop is a step up (in). Without this, "close"
   (down, in KNX) **extends** an awning, for instance in a "strong wind, close
   every cover" scene.
 - **Garage doors and gates**: closing needs the opening option too (someone
-  may stand under them); stopping always leaves.
+  may stand under them). A stop is a step, which moves a gate at rest: when
+  the function has a "Movement" data point, it is read first and the stop
+  leaves only if the gate is not shown at rest (not read: in doubt, the stop
+  leaves); without "Movement", stopping a gate needs the opening option too.
 - **Functions not offered**: never offered nor commanded, not even a stop
-  (a door opener, a pump...).
+  (a door opener, a pump...); a stop kept before the function was listed is
+  dropped.
 
 ### When a stop does not leave
 
@@ -125,21 +129,25 @@ A stop does not leave only in these cases:
 
 - user name or password missing or invalid, or refused by the server;
 - no trusted certificate, or certificate changed;
-- server unreachable, locked (423, while a project is loaded), or asking to
-  slow down (429), or the route refused (401/403) twice (a refused token is
-  registered again once, at once);
+- server unreachable, locked (423, while a project is loaded), asking to
+  slow down (429), or the route refused (403; or 401 again after the one new
+  registration that a refused token triggers at once);
 - before the configuration is first read from Gladys (container start): it
   is refused, nothing sent (the address is not known yet);
 - the function is in **Functions not offered**.
 
 What happens then depends on the stop:
 
-- **Stopping a cover** ("Step-Up-Down" 1) is never repeated: on a cover at
-  rest, each one is a short step down. It is tried again only when nothing
-  reached the server, twice within about 250 ms of your click; then it is
-  given up, and the answer says so ("Stop not sent... click again"). Sent
+- **Stopping a cover** ("Step-Up-Down") is never sent again once something
+  reached the server: on a cover at rest, each one is a short step (down,
+  up for an awning). When nothing reached the server (refused, too slow,
+  locked), it is tried again about every second: for up to 10 seconds when
+  the function has "Movement", read before each new try (0: already stopped,
+  given up; 1: sent), otherwise for up to about 3 seconds. Then it is given
+  up. The answer says what happened: done, "Stop not sent yet... tried again
+  for up to N s, then given up", or "Stop not sent... click again". Sent
   without an answer of the server, it is never sent again ("Sent, without
-  answer").
+  answer"). A stop waiting for a free connection waits 3 seconds at most.
 - **Closing a cover** ("Up-Down") is tried again while nothing reached the
   server (or the server refused it unexecuted: 423, 429, 401/403), at most
   **20 seconds** after your click, every 5 seconds; on a cover with a
